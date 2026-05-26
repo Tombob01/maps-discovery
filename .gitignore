@@ -1,16 +1,31 @@
+# dependencies
 node_modules/
+
+# build output
 dist/
+dist-test/
+*.tsbuildinfo
+
+# coverage
 coverage/
+
+# runtime / generated data
 logs/
 data/cache/
 data/exports/
 
+# environment
 .env
 .env.*
 
+# logs
 *.log
 
-.vscode/settings.json
+# editor
+.vscode/
+!.vscode/extensions.json
+!.vscode/launch.json
 
+# OS
 .DS_Store
 Thumbs.db
