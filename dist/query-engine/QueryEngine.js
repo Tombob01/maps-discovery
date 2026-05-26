@@ -50,13 +50,22 @@ export class QueryEngine {
     async generate(seed, runId, providerIds) {
         // Validate seed
         if (seed.niche.trim() === "") {
-            return err({ code: "INVALID_SEED", message: "QuerySeed.niche must not be empty" });
+            return err({
+                code: "INVALID_SEED",
+                message: "QuerySeed.niche must not be empty",
+            });
         }
         if (seed.location.displayName.trim() === "") {
-            return err({ code: "INVALID_SEED", message: "QuerySeed.location.displayName must not be empty" });
+            return err({
+                code: "INVALID_SEED",
+                message: "QuerySeed.location.displayName must not be empty",
+            });
         }
         if (providerIds.length === 0) {
-            return err({ code: "INVALID_SEED", message: "At least one providerId is required" });
+            return err({
+                code: "INVALID_SEED",
+                message: "At least one providerId is required",
+            });
         }
         // Resolve geo once (shared across all providers for this seed)
         const geoResult = await this.geoResolver.resolve(seed.location);

@@ -26,7 +26,7 @@
  *   - Individual card extraction failure → log and skip (non-fatal)
  */
 import {} from "./GoogleMapsAdapter.js";
-import { humanDelay, withRetry } from "./GoogleMapsBrowser.js";
+import { humanDelay, withRetry, } from "./GoogleMapsBrowser.js";
 import { ProviderError } from "../../core/errors/ProviderError.js";
 // ---------------------------------------------------------------------------
 // Constants
@@ -50,9 +50,12 @@ function decodeCursor(encoded) {
     try {
         const json = Buffer.from(encoded, "base64url").toString("utf8");
         const parsed = JSON.parse(json);
-        if (typeof parsed === "object" && parsed !== null &&
-            "yieldedCount" in parsed && typeof parsed.yieldedCount === "number" &&
-            "queryHash" in parsed && typeof parsed.queryHash === "string") {
+        if (typeof parsed === "object" &&
+            parsed !== null &&
+            "yieldedCount" in parsed &&
+            typeof parsed.yieldedCount === "number" &&
+            "queryHash" in parsed &&
+            typeof parsed.queryHash === "string") {
             return parsed;
         }
         return null;
@@ -118,10 +121,16 @@ export class GoogleMapsProvider {
     // ---------------------------------------------------------------------------
     async checkHealth() {
         if (!this._browserReady) {
-            return { status: "unavailable", reason: "Browser not initialised — call initializeBrowser() first" };
+            return {
+                status: "unavailable",
+                reason: "Browser not initialised — call initializeBrowser() first",
+            };
         }
         if (!this.browser.isReady) {
-            return { status: "unavailable", reason: "Browser instance is not running" };
+            return {
+                status: "unavailable",
+                reason: "Browser instance is not running",
+            };
         }
         return { status: "healthy" };
     }
@@ -212,8 +221,8 @@ export class GoogleMapsProvider {
                         continue;
                     }
                     // Derive a stable result ID — prefer Place ID, fall back to URL hash
-                    const resultId = payload.placeId
-                        ?? this._syntheticId(payload.listingUrl ?? `position:${i}`);
+                    const resultId = payload.placeId ??
+                        this._syntheticId(payload.listingUrl ?? `position:${i}`);
                     // Skip duplicates within the same session
                     if (seenPlaceIds.has(resultId))
                         continue;
@@ -241,7 +250,9 @@ export class GoogleMapsProvider {
         }
         finally {
             // Always close the page — even if the generator was abandoned mid-run
-            await page.close().catch(() => { });
+            await page.close().catch(() => {
+                /* ignore */
+            });
         }
     }
     // ---------------------------------------------------------------------------

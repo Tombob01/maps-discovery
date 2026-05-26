@@ -26,35 +26,39 @@ import { ok, err } from "../core/types/common.js";
  * Intentionally minimal — the purpose is fallback, not precision.
  */
 const COUNTRY_CENTROIDS = Object.freeze({
-    NG: { lat: 9.0820, lng: 8.6753 }, // Nigeria
+    NG: { lat: 9.082, lng: 8.6753 }, // Nigeria
     GH: { lat: 7.9465, lng: -1.0232 }, // Ghana
     KE: { lat: -0.0236, lng: 37.9062 }, // Kenya
     ZA: { lat: -30.5595, lng: 22.9375 }, // South Africa
     EG: { lat: 26.8206, lng: 30.8025 }, // Egypt
-    ET: { lat: 9.1450, lng: 40.4897 }, // Ethiopia
-    TZ: { lat: -6.3690, lng: 34.8888 }, // Tanzania
+    ET: { lat: 9.145, lng: 40.4897 }, // Ethiopia
+    TZ: { lat: -6.369, lng: 34.8888 }, // Tanzania
     UG: { lat: 1.3733, lng: 32.2903 }, // Uganda
     US: { lat: 37.0902, lng: -95.7129 }, // United States
-    GB: { lat: 55.3781, lng: -3.4360 }, // United Kingdom
+    GB: { lat: 55.3781, lng: -3.436 }, // United Kingdom
     CA: { lat: 56.1304, lng: -106.3468 }, // Canada
     AU: { lat: -25.2744, lng: 133.7751 }, // Australia
     IN: { lat: 20.5937, lng: 78.9629 }, // India
-    BR: { lat: -14.2350, lng: -51.9253 }, // Brazil
+    BR: { lat: -14.235, lng: -51.9253 }, // Brazil
     DE: { lat: 51.1657, lng: 10.4515 }, // Germany
     FR: { lat: 46.2276, lng: 2.2137 }, // France
     AE: { lat: 23.4241, lng: 53.8478 }, // UAE
     SG: { lat: 1.3521, lng: 103.8198 }, // Singapore
     ZW: { lat: -19.0154, lng: 29.1549 }, // Zimbabwe
-    CM: { lat: 3.8480, lng: 11.5021 }, // Cameroon
-    CI: { lat: 7.5400, lng: -5.5471 }, // Côte d'Ivoire
+    CM: { lat: 3.848, lng: 11.5021 }, // Cameroon
+    CI: { lat: 7.54, lng: -5.5471 }, // Côte d'Ivoire
     SN: { lat: 14.4974, lng: -14.4524 }, // Senegal
 });
 // ---------------------------------------------------------------------------
 // Coordinate validation helper
 // ---------------------------------------------------------------------------
 function isValidCoordinates(c) {
-    return (Number.isFinite(c.lat) && c.lat >= -90 && c.lat <= 90 &&
-        Number.isFinite(c.lng) && c.lng >= -180 && c.lng <= 180);
+    return (Number.isFinite(c.lat) &&
+        c.lat >= -90 &&
+        c.lat <= 90 &&
+        Number.isFinite(c.lng) &&
+        c.lng >= -180 &&
+        c.lng <= 180);
 }
 function geoErr(code, message, input, cause) {
     const detail = { code, message, input };
@@ -82,7 +86,8 @@ export class PassthroughGeoResolver {
     async resolve(target) {
         // ── Priority 1: explicit coordinates on the target ──
         if (target.coordinates !== undefined) {
-            if (this.config.validateExistingCoordinates && !isValidCoordinates(target.coordinates)) {
+            if (this.config.validateExistingCoordinates &&
+                !isValidCoordinates(target.coordinates)) {
                 return err(geoErr("INVALID_INPUT", `GeoTarget.coordinates out of range: lat=${target.coordinates.lat}, lng=${target.coordinates.lng}`, target));
             }
             return ok(buildResolvedTarget(target, target.coordinates));
@@ -157,15 +162,33 @@ function buildResolvedTarget(target, coordinates) {
  */
 function lookupByCountryName(countryName) {
     const COUNTRY_NAMES = {
-        "nigeria": "NG", "ghana": "GH", "kenya": "KE",
-        "south africa": "ZA", "egypt": "EG", "ethiopia": "ET",
-        "tanzania": "TZ", "uganda": "UG", "united states": "US",
-        "usa": "US", "united kingdom": "GB", "uk": "GB",
-        "england": "GB", "canada": "CA", "australia": "AU",
-        "india": "IN", "brazil": "BR", "germany": "DE",
-        "france": "FR", "uae": "AE", "united arab emirates": "AE",
-        "singapore": "SG", "zimbabwe": "ZW", "cameroon": "CM",
-        "ivory coast": "CI", "côte d'ivoire": "CI", "senegal": "SN",
+        nigeria: "NG",
+        ghana: "GH",
+        kenya: "KE",
+        "south africa": "ZA",
+        egypt: "EG",
+        ethiopia: "ET",
+        tanzania: "TZ",
+        uganda: "UG",
+        "united states": "US",
+        usa: "US",
+        "united kingdom": "GB",
+        uk: "GB",
+        england: "GB",
+        canada: "CA",
+        australia: "AU",
+        india: "IN",
+        brazil: "BR",
+        germany: "DE",
+        france: "FR",
+        uae: "AE",
+        "united arab emirates": "AE",
+        singapore: "SG",
+        zimbabwe: "ZW",
+        cameroon: "CM",
+        "ivory coast": "CI",
+        "côte d'ivoire": "CI",
+        senegal: "SN",
     };
     const normalised = countryName.trim().toLowerCase();
     const code = COUNTRY_NAMES[normalised];

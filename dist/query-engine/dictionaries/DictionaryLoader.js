@@ -40,10 +40,12 @@ function validateNicheTerm(raw, index) {
     const modifiers = isStringArray(r.modifiers) ? r.modifiers : [];
     const term = {
         term: r.term.trim(),
-        synonyms: Object.freeze(synonyms.map(s => s.trim()).filter(s => s.length > 0)),
-        modifiers: Object.freeze(modifiers.map(m => m.trim()).filter(m => m.length > 0)),
+        synonyms: Object.freeze(synonyms.map((s) => s.trim()).filter((s) => s.length > 0)),
+        modifiers: Object.freeze(modifiers.map((m) => m.trim()).filter((m) => m.length > 0)),
     };
-    const result = { ...term };
+    const result = {
+        ...term,
+    };
     if (isString(r.plural) && r.plural.trim() !== "")
         result.plural = r.plural.trim();
     if (isString(r.singular) && r.singular.trim() !== "")
@@ -75,8 +77,14 @@ function validateNicheDictionary(raw, sourcePath) {
 // ---------------------------------------------------------------------------
 function validateGeoLocationType(v, path) {
     const valid = new Set([
-        "country", "state", "region", "county", "city",
-        "district", "neighbourhood", "postal",
+        "country",
+        "state",
+        "region",
+        "county",
+        "city",
+        "district",
+        "neighbourhood",
+        "postal",
     ]);
     if (!isString(v) || !valid.has(v)) {
         throw new Error(`${path}.type: invalid GeoLocationType "${String(v)}"`);
@@ -93,7 +101,9 @@ function validateGeoSubLocation(raw, path) {
     return Object.freeze({
         name: r.name.trim(),
         type: validateGeoLocationType(r.type, path),
-        aliases: Object.freeze(isStringArray(r.aliases) ? r.aliases.map(a => a.trim()).filter(a => a.length > 0) : []),
+        aliases: Object.freeze(isStringArray(r.aliases)
+            ? r.aliases.map((a) => a.trim()).filter((a) => a.length > 0)
+            : []),
     });
 }
 function validateGeoRegion(raw, index, sourcePath) {
@@ -110,7 +120,9 @@ function validateGeoRegion(raw, index, sourcePath) {
     return Object.freeze({
         name: r.name.trim(),
         type: validateGeoLocationType(r.type, path),
-        aliases: Object.freeze(isStringArray(r.aliases) ? r.aliases.map(a => a.trim()).filter(a => a.length > 0) : []),
+        aliases: Object.freeze(isStringArray(r.aliases)
+            ? r.aliases.map((a) => a.trim()).filter((a) => a.length > 0)
+            : []),
         subLocations: Object.freeze(subLocations),
     });
 }
@@ -144,7 +156,8 @@ function validateGeoDictionary(raw, sourcePath) {
 function yamlFilesIn(dir, prefix) {
     try {
         return readdirSync(dir)
-            .filter((f) => (extname(f) === ".yml" || extname(f) === ".yaml") && (!prefix || f.startsWith(prefix)))
+            .filter((f) => (extname(f) === ".yml" || extname(f) === ".yaml") &&
+            (!prefix || f.startsWith(prefix)))
             .map((f) => join(dir, f));
     }
     catch {
@@ -233,7 +246,9 @@ export function loadNicheDictionaries(dir) {
             const raw = loadYaml(filePath);
             dicts.push(validateNicheDictionary(raw, filePath));
         }
-        catch { /* skip invalid */ }
+        catch {
+            /* skip invalid */
+        }
     }
     return new NicheDictionaryIndexImpl(dicts);
 }
@@ -249,7 +264,9 @@ export function loadGeoDictionaries(dir) {
             const raw = loadYaml(filePath);
             dicts.push(validateGeoDictionary(raw, filePath));
         }
-        catch { /* skip invalid */ }
+        catch {
+            /* skip invalid */
+        }
     }
     return new GeoDictionaryIndexImpl(dicts);
 }

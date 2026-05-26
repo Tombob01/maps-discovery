@@ -32,5 +32,5 @@ export { BaseExpansionStrategy, SynonymExpansionStrategy, ModifierExpansionStrat
 // ── Dictionary loaders ─────────────────────────────────────────────────────
 export { loadNicheDictionaries, loadGeoDictionaries, loadAllDictionaries, } from "./dictionaries/DictionaryLoader.js";
 // ── Config ─────────────────────────────────────────────────────────────────
-export { QUERY_ENGINE_DEFAULTS, } from "./config/QueryEngineConfig.js";
+export { QUERY_ENGINE_DEFAULTS } from "./config/QueryEngineConfig.js";
 //# sourceMappingURL=index.js.map

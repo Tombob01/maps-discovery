@@ -29,10 +29,7 @@ const GOOGLE_MAPS_BASE_URL = "https://www.google.com/maps";
  * Resource types to block — reduces data transfer and avoids ad trackers
  * that may trigger anti-bot systems.
  */
-const BLOCKED_RESOURCE_TYPES = new Set([
-    "font",
-    "media",
-]);
+const BLOCKED_RESOURCE_TYPES = new Set(["font", "media"]);
 /**
  * Domains to block outright — analytics, ads, beacons.
  * Keep this conservative: blocking too much breaks the page.
@@ -60,7 +57,7 @@ function randomBetween(min, max) {
  */
 export async function humanDelay(minMs, maxMs) {
     const ms = randomBetween(minMs, maxMs);
-    await new Promise(resolve => setTimeout(resolve, ms));
+    await new Promise((resolve) => setTimeout(resolve, ms));
 }
 // ---------------------------------------------------------------------------
 // Retry helper
@@ -83,7 +80,7 @@ export async function withRetry(operation, maxAttempts, baseDelayMs, capMs, _lab
             const rawDelay = baseDelayMs * Math.pow(2, attempt - 1);
             const delay = Math.min(rawDelay, capMs);
             const jitter = randomBetween(0, Math.floor(delay * 0.2));
-            await new Promise(resolve => setTimeout(resolve, delay + jitter));
+            await new Promise((resolve) => setTimeout(resolve, delay + jitter));
         }
     }
     throw lastError;
@@ -167,14 +164,18 @@ export class GoogleMapsBrowser {
                 this.context = null;
             }
         }
-        catch { /* ignore */ }
+        catch {
+            /* ignore */
+        }
         try {
             if (this.browser !== null) {
                 await this.browser.close();
                 this.browser = null;
             }
         }
-        catch { /* ignore */ }
+        catch {
+            /* ignore */
+        }
     }
     get isReady() {
         return this.browser !== null && this.context !== null;
@@ -289,7 +290,9 @@ export class GoogleMapsBrowser {
                 await humanDelay(500, 1200);
             }
         }
-        catch { /* consent dialog may not be present — ignore */ }
+        catch {
+            /* consent dialog may not be present — ignore */
+        }
     }
     _isTimeout(err) {
         if (err instanceof Error) {

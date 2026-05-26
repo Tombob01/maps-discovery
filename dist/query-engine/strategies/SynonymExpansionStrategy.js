@@ -15,7 +15,7 @@
  * Strategy ID: "synonym"
  * Confidence:  0.85 (synonyms are near-equivalent but not identical)
  */
-import { BaseExpansionStrategy } from "./BaseExpansionStrategy.js";
+import { BaseExpansionStrategy, } from "./BaseExpansionStrategy.js";
 export class SynonymExpansionStrategy extends BaseExpansionStrategy {
     niches;
     id = "synonym";
@@ -34,7 +34,7 @@ export class SynonymExpansionStrategy extends BaseExpansionStrategy {
         for (const term of dict.terms) {
             // Find which form of the term appears in the rawText (plural, singular, or base)
             const forms = [term.term, term.plural, term.singular].filter((f) => f !== undefined);
-            const matchedForm = forms.find(f => {
+            const matchedForm = forms.find((f) => {
                 const escaped = f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
                 return new RegExp(`\\b${escaped}\\b`, "i").test(query.rawText);
             });

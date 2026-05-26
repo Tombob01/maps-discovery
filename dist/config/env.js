@@ -29,11 +29,18 @@ const nonEmptyString = zString().trim().min(1);
 const positiveInt = zCoerce.number().int().positive();
 const nonNegativeInt = zCoerce.number().int().min(0);
 const portNumber = zCoerce.number().int().min(1).max(65535);
-const booleanString = zEnum(["true", "false", "1", "0", "yes", "no"])
-    .transform((v) => v === "true" || v === "1" || v === "yes");
+const booleanString = zEnum([
+    "true",
+    "false",
+    "1",
+    "0",
+    "yes",
+    "no",
+]).transform((v) => v === "true" || v === "1" || v === "yes");
 // ---------------------------------------------------------------------------
 // Schema
 // ---------------------------------------------------------------------------
+// eslint-disable-next-line @typescript-eslint/naming-convention
 const EnvSchema = zObject({
     // ── Runtime ──────────────────────────────────────────────────────────────
     NODE_ENV: zEnum(["development", "test", "production"]).default("development"),
@@ -77,7 +84,15 @@ const EnvSchema = zObject({
     PLAYWRIGHT_LOCALE: nonEmptyString.default("en-US"),
     PLAYWRIGHT_TIMEZONE: nonEmptyString.default("Africa/Lagos"),
     // ── Logging ──────────────────────────────────────────────────────────────
-    LOG_LEVEL: zEnum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
+    LOG_LEVEL: zEnum([
+        "trace",
+        "debug",
+        "info",
+        "warn",
+        "error",
+        "fatal",
+        "silent",
+    ]).default("info"),
     LOG_FORMAT: zEnum(["pretty", "json"]).default("pretty"),
     LOG_STACK_TRACES: booleanString.default(true),
     // ── Export ───────────────────────────────────────────────────────────────
@@ -135,10 +150,9 @@ function buildConfig(parsed) {
             nicheDictionariesDir: resolve(root, parsed.QUERY_ENGINE_NICHE_DICTS_DIR),
             geoDictionariesDir: resolve(root, parsed.QUERY_ENGINE_GEO_DICTS_DIR),
             defaultMaxVariants: parsed.QUERY_ENGINE_DEFAULT_MAX_VARIANTS,
-            defaultStrategyIds: Object.freeze(parsed.QUERY_ENGINE_DEFAULT_STRATEGIES
-                .split(",")
-                .map(s => s.trim())
-                .filter(s => s.length > 0)),
+            defaultStrategyIds: Object.freeze(parsed.QUERY_ENGINE_DEFAULT_STRATEGIES.split(",")
+                .map((s) => s.trim())
+                .filter((s) => s.length > 0)),
         },
         playwright: {
             headless: parsed.PLAYWRIGHT_HEADLESS,
@@ -175,7 +189,7 @@ export function getConfig() {
     const result = EnvSchema.safeParse(process.env);
     if (!result.success) {
         const issues = result.error.issues
-            .map(i => `  ${i.path.join(".")}: ${i.message}`)
+            .map((i) => `  ${i.path.join(".")}: ${i.message}`)
             .join("\n");
         throw new EnvValidationError(`Environment validation failed:\n${issues}\n\nCheck .env.example for required variables.`);
     }

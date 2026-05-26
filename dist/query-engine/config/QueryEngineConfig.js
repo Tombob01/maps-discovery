@@ -17,7 +17,12 @@ export const QUERY_ENGINE_DEFAULTS = {
     },
     expansion: {
         defaultMaxVariants: 20,
-        defaultStrategyIds: ["synonym", "modifier", "plural", "geo"],
+        defaultStrategyIds: [
+            "synonym",
+            "modifier",
+            "plural",
+            "geo",
+        ],
         continueOnStrategyError: true,
     },
     geoResolver: {

@@ -20,12 +20,12 @@
  * Strategy ID: "plural"
  * Confidence:  0.90 (plural/singular forms are high-confidence equivalents)
  */
-import { BaseExpansionStrategy } from "./BaseExpansionStrategy.js";
+import { BaseExpansionStrategy, } from "./BaseExpansionStrategy.js";
 export class PluralExpansionStrategy extends BaseExpansionStrategy {
     niches;
     id = "plural";
     description = "Substitutes term with its plural/singular dictionary form";
-    static CONFIDENCE = 0.90;
+    static CONFIDENCE = 0.9;
     constructor(niches) {
         super();
         this.niches = niches;

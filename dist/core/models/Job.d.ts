@@ -96,7 +96,7 @@ export interface StageCheckpoint {
     readonly metadata?: Readonly<Record<string, unknown>>;
     readonly createdAt: Date;
 }
-export type { RunStatus, StageCheckpointStatus, } from "../types/common.js";
+export type { RunStatus, StageCheckpointStatus } from "../types/common.js";
 export interface Run {
     readonly id: RunID;
     readonly status: RunStatus;

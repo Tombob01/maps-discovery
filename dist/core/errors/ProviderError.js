@@ -20,10 +20,22 @@ export class ProviderError extends AppError {
         this.isRetryable = options.isRetryable;
     }
     static retryable(code, providerId, message, cause) {
-        return new ProviderError({ code, providerId, message, isRetryable: true, cause });
+        return new ProviderError({
+            code,
+            providerId,
+            message,
+            isRetryable: true,
+            cause,
+        });
     }
     static fatal(code, providerId, message, cause) {
-        return new ProviderError({ code, providerId, message, isRetryable: false, cause });
+        return new ProviderError({
+            code,
+            providerId,
+            message,
+            isRetryable: false,
+            cause,
+        });
     }
 }
 //# sourceMappingURL=ProviderError.js.map

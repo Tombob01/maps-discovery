@@ -24,7 +24,7 @@ export class BaseExpansionStrategy {
         try {
             const candidates = this._apply(query, context);
             const filtered = this._filterCandidates(candidates, context);
-            return ok(filtered.map(c => c.rawText));
+            return ok(filtered.map((c) => c.rawText));
         }
         catch (caught) {
             return err(this._wrapError("UNKNOWN", "Unexpected error in strategy", caught));
@@ -81,7 +81,7 @@ export class BaseExpansionStrategy {
     // Private — dedup + budget enforcement
     // ---------------------------------------------------------------------------
     _filterCandidates(candidates, context) {
-        const existingLower = new Set(context.existingVariants.map(v => v.trim().toLowerCase()));
+        const existingLower = new Set(context.existingVariants.map((v) => v.trim().toLowerCase()));
         const accepted = [];
         for (const candidate of candidates) {
             if (accepted.length >= context.maxNew)

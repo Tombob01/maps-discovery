@@ -66,7 +66,7 @@ export class QueryBuilder {
      * Returns one GeneratedQuery per provider.
      */
     buildForProviders(seed, runId, providerIds) {
-        return providerIds.map(pid => this.build(seed, runId, pid));
+        return providerIds.map((pid) => this.build(seed, runId, pid));
     }
 }
 // ---------------------------------------------------------------------------
@@ -84,7 +84,9 @@ export class QueryBuilder {
 function composeRawText(seed) {
     const parts = [];
     if (seed.modifiers !== undefined && seed.modifiers.length > 0) {
-        const mods = seed.modifiers.map(m => m.trim()).filter(m => m.length > 0);
+        const mods = seed.modifiers
+            .map((m) => m.trim())
+            .filter((m) => m.length > 0);
         if (mods.length > 0)
             parts.push(mods.join(" "));
     }

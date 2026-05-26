@@ -20,12 +20,12 @@
  * Strategy ID: "modifier"
  * Confidence:  0.80 (modifier changes query intent slightly)
  */
-import { BaseExpansionStrategy } from "./BaseExpansionStrategy.js";
+import { BaseExpansionStrategy, } from "./BaseExpansionStrategy.js";
 export class ModifierExpansionStrategy extends BaseExpansionStrategy {
     niches;
     id = "modifier";
     description = "Prepends niche modifiers to the base query";
-    static CONFIDENCE = 0.80;
+    static CONFIDENCE = 0.8;
     constructor(niches) {
         super();
         this.niches = niches;
@@ -35,10 +35,10 @@ export class ModifierExpansionStrategy extends BaseExpansionStrategy {
         if (dict === undefined)
             return [];
         // Collect all unique modifiers across all terms in the dictionary
-        const allModifiers = collectUniqueModifiers(dict.terms.flatMap(t => t.modifiers));
+        const allModifiers = collectUniqueModifiers(dict.terms.flatMap((t) => t.modifiers));
         // Exclude modifiers that are already present in the rawText (case-insensitive)
         const textLower = query.rawText.toLowerCase();
-        const newModifiers = allModifiers.filter(m => !textLower.includes(m.toLowerCase()));
+        const newModifiers = allModifiers.filter((m) => !textLower.includes(m.toLowerCase()));
         const candidates = [];
         for (const modifier of newModifiers) {
             if (candidates.length >= context.maxNew)

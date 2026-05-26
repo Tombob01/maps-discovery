@@ -48,7 +48,7 @@ export class QueryExpander {
         const variants = [];
         // Mutable sets tracking what has been accepted so far in this call.
         // These start from the caller-supplied context and grow as we accept candidates.
-        const seenTexts = new Set(context.existingVariants.map(v => v.trim().toLowerCase()));
+        const seenTexts = new Set(context.existingVariants.map((v) => v.trim().toLowerCase()));
         const seenHashes = new Set(context.existingQueryHashes);
         let remaining = context.maxNew;
         for (const stratId of strategyIds) {
@@ -125,7 +125,7 @@ export class QueryExpander {
         const result = await strategy.apply(query, context);
         if (!result.ok)
             return err({ message: result.error.message });
-        const wrapped = result.value.map(rawText => ({
+        const wrapped = result.value.map((rawText) => ({
             rawText,
             metadata: Object.freeze({
                 strategyId: strategy.id,

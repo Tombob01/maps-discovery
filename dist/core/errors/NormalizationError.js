@@ -1,6 +1,5 @@
 /**
  * @module core/errors/NormalizationError
- * Errors arising during ProviderResult → BusinessRecord conversion.
  */
 import { AppError } from "./BaseError.js";
 export class NormalizationError extends AppError {
@@ -8,12 +7,10 @@ export class NormalizationError extends AppError {
     providerId;
     rawResultId;
     constructor(options) {
-        const _o = {};
-        if (options.cause !== undefined)
-            _o.cause = options.cause;
-        if (options.context !== undefined)
-            _o.context = options.context;
-        super(options.message, _o);
+        super(options.message, {
+            cause: options.cause,
+            ...(options.context !== undefined && { context: options.context }),
+        });
         this.code = options.code;
         this.providerId = options.providerId;
         this.rawResultId = options.rawResultId;

@@ -47,7 +47,11 @@ export class QueryCanonicalizer {
         }
         let queryHash;
         try {
-            queryHash = this.hashFromParts({ canonicalText, canonicalGeoLabel, providerId: query.providerId });
+            queryHash = this.hashFromParts({
+                canonicalText,
+                canonicalGeoLabel,
+                providerId: query.providerId,
+            });
         }
         catch (caught) {
             return err({
@@ -69,7 +73,10 @@ export class QueryCanonicalizer {
             isDuplicateOfExisting: isDuplicate,
         };
         if (isDuplicate && existingId !== undefined) {
-            return ok(Object.freeze({ ...base, duplicateOfQueryId: existingId }));
+            return ok(Object.freeze({
+                ...base,
+                duplicateOfQueryId: existingId,
+            }));
         }
         return ok(Object.freeze(base));
     }
@@ -80,7 +87,9 @@ export class QueryCanonicalizer {
         // Deterministic concatenation with a separator that cannot appear
         // in any of the individual parts after normalisation.
         const input = `${parts.canonicalText}\x00${parts.providerId}\x00${parts.canonicalGeoLabel}`;
-        return createHash("sha256").update(input, "utf8").digest("hex");
+        return createHash("sha256")
+            .update(input, "utf8")
+            .digest("hex");
     }
     // ---------------------------------------------------------------------------
     // IQueryCanonicalizer — normalizeText()
@@ -146,15 +155,27 @@ export class QueryCanonicalizer {
      */
     _sortModifierTokens(text) {
         const ANCHOR_WORDS = new Set([
-            "in", "near", "and", "or", "the", "of", "for", "with", "by",
-            "at", "on", "a", "an",
+            "in",
+            "near",
+            "and",
+            "or",
+            "the",
+            "of",
+            "for",
+            "with",
+            "by",
+            "at",
+            "on",
+            "a",
+            "an",
         ]);
         const tokens = text.split(" ");
         if (tokens.length < 2)
             return text;
         // Find the boundary: index of the first anchor word
         let boundary = 0;
-        while (boundary < tokens.length && !ANCHOR_WORDS.has(tokens[boundary] ?? "")) {
+        while (boundary < tokens.length &&
+            !ANCHOR_WORDS.has(tokens[boundary] ?? "")) {
             boundary++;
         }
         // Nothing to sort if there are 0 or 1 prefix tokens,

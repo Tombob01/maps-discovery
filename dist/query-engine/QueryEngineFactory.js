@@ -12,7 +12,7 @@
  */
 import { QUERY_ENGINE_DEFAULTS } from "./config/QueryEngineConfig.js";
 import { loadAllDictionaries } from "./dictionaries/DictionaryLoader.js";
-import { PassthroughGeoResolver, StaticCoordinateGeoResolver } from "./GeoResolver.js";
+import { PassthroughGeoResolver, StaticCoordinateGeoResolver, } from "./GeoResolver.js";
 import { QueryCanonicalizer } from "./QueryCanonicalizer.js";
 import { QueryEngine } from "./QueryEngine.js";
 import { QueryExpander } from "./QueryExpander.js";
@@ -33,7 +33,8 @@ export function createQueryEngine(options) {
     // ── Canonicalizer ──────────────────────────────────────────────────────
     const canonicalizer = new QueryCanonicalizer(config.canonicalizer);
     // ── Geo resolver ───────────────────────────────────────────────────────
-    const geoResolver = options.staticCoordinates !== undefined && Object.keys(options.staticCoordinates).length > 0
+    const geoResolver = options.staticCoordinates !== undefined &&
+        Object.keys(options.staticCoordinates).length > 0
         ? new StaticCoordinateGeoResolver(options.staticCoordinates, config.geoResolver)
         : new PassthroughGeoResolver(config.geoResolver);
     // ── Built-in strategies ────────────────────────────────────────────────
@@ -57,7 +58,7 @@ export function createQueryEngine(options) {
         canonicalizer,
         nicheDictCount: niches.size,
         geoDictCount: geo.size,
-        strategyIds: Object.freeze(allStrategies.map(s => s.id)),
+        strategyIds: Object.freeze(allStrategies.map((s) => s.id)),
     };
 }
 // ---------------------------------------------------------------------------

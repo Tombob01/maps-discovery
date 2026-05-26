@@ -30,6 +30,6 @@ export type { StrategyCandidate } from "./strategies/index.js";
 export { loadNicheDictionaries, loadGeoDictionaries, loadAllDictionaries, } from "./dictionaries/DictionaryLoader.js";
 export type { NicheDictionary, NicheTerm, NicheDictionaryIndex, } from "./dictionaries/NicheDictionary.js";
 export type { GeoDictionary, GeoRegion, GeoSubLocation, GeoLocationType, GeoDictionaryIndex, } from "./dictionaries/GeoDictionary.js";
-export { QUERY_ENGINE_DEFAULTS, } from "./config/QueryEngineConfig.js";
+export { QUERY_ENGINE_DEFAULTS } from "./config/QueryEngineConfig.js";
 export type { QueryEngineConfig, DictionaryConfig, CanonicalizerConfig, ExpansionConfig, GeoResolverConfig, } from "./config/QueryEngineConfig.js";
 //# sourceMappingURL=index.d.ts.map

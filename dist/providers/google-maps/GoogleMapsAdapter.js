@@ -42,7 +42,9 @@ function extractPlaceId(url) {
         if (placeId)
             return placeId;
     }
-    catch { /* invalid URL */ }
+    catch {
+        /* invalid URL */
+    }
     return undefined;
 }
 /**
@@ -171,7 +173,9 @@ export class GoogleMapsAdapter {
      */
     async _extractFromDetailPanel(page, listingUrl, searchQuery, resultPosition) {
         const currentUrl = page.url();
-        const resolvedUrl = currentUrl.includes("/maps/place/") ? currentUrl : listingUrl;
+        const resolvedUrl = currentUrl.includes("/maps/place/")
+            ? currentUrl
+            : listingUrl;
         const placeId = resolvedUrl ? extractPlaceId(resolvedUrl) : undefined;
         const coords = resolvedUrl ? extractCoordinates(resolvedUrl) : undefined;
         await this._tryExpandHours(page);
@@ -238,7 +242,7 @@ export class GoogleMapsAdapter {
         try {
             const candidates = [
                 'span[jsaction*="openhours"]',
-                'div[data-hide-tooltip-on-mobile] span',
+                "div[data-hide-tooltip-on-mobile] span",
             ];
             for (const candidate of candidates) {
                 const text = await getText(page, candidate);
@@ -259,7 +263,9 @@ export class GoogleMapsAdapter {
                 await humanDelay(300, 600);
             }
         }
-        catch { /* non-fatal */ }
+        catch {
+            /* non-fatal */
+        }
     }
     async _extractHoursRaw(page) {
         try {

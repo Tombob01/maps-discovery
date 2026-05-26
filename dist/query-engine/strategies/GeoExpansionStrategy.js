@@ -27,7 +27,7 @@
  * Strategy ID: "geo"
  * Confidence:  0.75 (sub-locations are narrower scope, lower baseline coverage)
  */
-import { BaseExpansionStrategy } from "./BaseExpansionStrategy.js";
+import { BaseExpansionStrategy, } from "./BaseExpansionStrategy.js";
 export class GeoExpansionStrategy extends BaseExpansionStrategy {
     geodict;
     id = "geo";
@@ -40,7 +40,9 @@ export class GeoExpansionStrategy extends BaseExpansionStrategy {
     _apply(query, context) {
         const { geoTarget } = query;
         // Resolve sub-location names in priority order
-        const regionName = geoTarget.city ?? geoTarget.state ?? extractCityFromDisplayName(geoTarget.displayName);
+        const regionName = geoTarget.city ??
+            geoTarget.state ??
+            extractCityFromDisplayName(geoTarget.displayName);
         if (regionName === undefined)
             return [];
         const subLocations = this.geodict.getSubLocations(regionName);
@@ -77,7 +79,8 @@ export class GeoExpansionStrategy extends BaseExpansionStrategy {
                     continue;
                 // Skip aliases whose text still contains a primary sub-location name
                 const aliasLower = alias.toLowerCase();
-                const isPrimaryName = sub.name.toLowerCase() === aliasLower || aliasLower.includes(sub.name.toLowerCase());
+                const isPrimaryName = sub.name.toLowerCase() === aliasLower ||
+                    aliasLower.includes(sub.name.toLowerCase());
                 if (isPrimaryName)
                     continue;
                 candidates.push({

@@ -14,9 +14,9 @@
  *   └── IProviderMapper          maps provider-specific keys → PartialRawFields
  */
 
+import type { Result } from "../types/common.js";
 import type { BusinessRecord } from "../models/BusinessRecord.js";
 import type { ProviderResult } from "../models/ProviderResult.js";
-import type { Result } from "../types/common.js";
 
 // ---------------------------------------------------------------------------
 // Normalization context
