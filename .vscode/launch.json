@@ -1,0 +1,58 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    // ── Run current test file ────────────────────────────────────────────────
+    {
+      "type":    "node",
+      "request": "launch",
+      "name":    "Debug: current test file",
+      "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+      "args":    ["run", "${relativeFile}"],
+      "console": "integratedTerminal",
+      "smartStep": true,
+      "sourceMaps": true,
+      "env": { "NODE_ENV": "test" }
+    },
+
+    // ── Run all tests ────────────────────────────────────────────────────────
+    {
+      "type":    "node",
+      "request": "launch",
+      "name":    "Debug: all tests",
+      "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+      "args":    ["run"],
+      "console": "integratedTerminal",
+      "smartStep": true,
+      "sourceMaps": true,
+      "env": { "NODE_ENV": "test" }
+    },
+
+    // ── Discovery worker (future) ────────────────────────────────────────────
+    {
+      "type":    "node",
+      "request": "launch",
+      "name":    "Debug: discovery worker",
+      "runtimeArgs": ["--import", "tsx/esm"],
+      "program": "${workspaceFolder}/src/pipeline/workers/discovery.worker.ts",
+      "console": "integratedTerminal",
+      "smartStep": true,
+      "sourceMaps": true,
+      "envFile": "${workspaceFolder}/.env",
+      "env": { "NODE_ENV": "development" }
+    },
+
+    // ── Query engine smoke test ──────────────────────────────────────────────
+    {
+      "type":    "node",
+      "request": "launch",
+      "name":    "Debug: query engine smoke",
+      "runtimeArgs": ["--import", "tsx/esm"],
+      "program": "${workspaceFolder}/scripts/smoke-query-engine.ts",
+      "console": "integratedTerminal",
+      "smartStep": true,
+      "sourceMaps": true,
+      "envFile": "${workspaceFolder}/.env",
+      "env": { "NODE_ENV": "development" }
+    }
+  ]
+}

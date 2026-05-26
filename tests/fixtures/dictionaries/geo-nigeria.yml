@@ -1,0 +1,37 @@
+version: 1
+country: Nigeria
+countryCode: NG
+regions:
+  - name: Lagos
+    type: state
+    aliases:
+      - Lagos State
+    subLocations:
+      - name: Victoria Island
+        type: district
+        aliases:
+          - VI
+      - name: Lekki
+        type: district
+        aliases:
+          - Lekki Peninsula
+      - name: Ikeja
+        type: district
+        aliases: []
+      - name: Surulere
+        type: district
+        aliases: []
+
+  - name: Abuja
+    type: state
+    aliases:
+      - FCT
+      - Federal Capital Territory
+    subLocations:
+      - name: Maitama
+        type: district
+        aliases: []
+      - name: Wuse
+        type: district
+        aliases:
+          - Wuse 2

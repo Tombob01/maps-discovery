@@ -1,0 +1,43 @@
+version: 1
+country: Ghana
+countryCode: GH
+regions:
+  - name: Accra
+    type: city
+    aliases:
+      - Greater Accra
+      - Accra Ghana
+    subLocations:
+      - name: Osu
+        type: district
+        aliases:
+          - Osu Accra
+      - name: East Legon
+        type: district
+        aliases: []
+      - name: Cantonments
+        type: district
+        aliases: []
+      - name: Airport Residential
+        type: district
+        aliases:
+          - Airport Residential Area
+      - name: Labone
+        type: district
+        aliases: []
+      - name: Tema
+        type: city
+        aliases:
+          - Tema Accra
+
+  - name: Kumasi
+    type: city
+    aliases:
+      - Kumasi Ashanti
+    subLocations:
+      - name: Adum
+        type: district
+        aliases: []
+      - name: Asokwa
+        type: district
+        aliases: []

@@ -1,0 +1,7 @@
+version: 1
+niche: broken-terms
+terms:
+  - synonyms:
+      - some synonym
+    modifiers:
+      - some modifier

@@ -1,0 +1,8 @@
+version: 1
+country: Nowhere
+countryCode: ZZ
+regions:
+  - name: Phantom
+    type: galaxy
+    aliases: []
+    subLocations: []

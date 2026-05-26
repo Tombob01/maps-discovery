@@ -1,0 +1,53 @@
+# =============================================================================
+# docker-compose.override.yml — LOCAL DEVELOPER OVERRIDES
+# =============================================================================
+#
+# This file is git-ignored. Each developer can maintain their own version
+# without affecting others.
+#
+# Copy this template if you need local overrides:
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# Docker Compose automatically merges this file with docker-compose.yml.
+# See: https://docs.docker.com/compose/extends/#multiple-compose-files
+#
+# Common uses:
+#   - Expose extra ports for debugging
+#   - Mount a local postgres.conf for tuning
+#   - Add a Redis Commander UI
+#   - Override resource limits for powerful machines
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Example: increase postgres memory limit on a powerful developer machine
+  # ---------------------------------------------------------------------------
+  # postgres:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 1G
+
+  # ---------------------------------------------------------------------------
+  # Example: add Redis Commander UI (http://localhost:8081)
+  # ---------------------------------------------------------------------------
+  # redis-commander:
+  #   image: rediscommander/redis-commander:latest
+  #   container_name: maps_discovery_redis_commander
+  #   restart: unless-stopped
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #   ports:
+  #     - "8081:8081"
+  #   environment:
+  #     REDIS_HOSTS: "local:redis:6379:0:${REDIS_PASSWORD:-redis_pass_local}"
+
+  # ---------------------------------------------------------------------------
+  # Example: mount a custom postgresql.conf for query tuning
+  # ---------------------------------------------------------------------------
+  # postgres:
+  #   volumes:
+  #     - ./docker/postgres/postgresql.dev.conf:/etc/postgresql/postgresql.conf:ro
+  #   command: postgres -c config_file=/etc/postgresql/postgresql.conf

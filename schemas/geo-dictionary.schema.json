@@ -1,0 +1,102 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id":     "https://maps-discovery/schemas/geo-dictionary",
+  "title":   "GeoDictionary",
+  "description": "Schema for geographic expansion dictionary YAML files.",
+  "type": "object",
+  "required": ["version", "country", "countryCode", "regions"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type":  "integer",
+      "enum":  [1],
+      "description": "Schema version — must be 1."
+    },
+    "country": {
+      "type":      "string",
+      "minLength": 1,
+      "description": "Full country name. e.g. 'Nigeria', 'United Kingdom'."
+    },
+    "countryCode": {
+      "type":      "string",
+      "pattern":   "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2 country code. e.g. 'NG', 'GB'."
+    },
+    "regions": {
+      "type":  "array",
+      "items": { "$ref": "#/$defs/GeoRegion" },
+      "description": "Top-level regions (states, provinces) within the country."
+    }
+  },
+  "$defs": {
+    "GeoLocationType": {
+      "type": "string",
+      "enum": ["country", "state", "region", "county", "city", "district", "neighbourhood", "postal"],
+      "description": "Administrative level of this location."
+    },
+    "GeoSubLocation": {
+      "type":     "object",
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type":      "string",
+          "minLength": 1,
+          "description": "Primary display name used in query text substitution."
+        },
+        "type": { "$ref": "#/$defs/GeoLocationType" },
+        "aliases": {
+          "type":  "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true,
+          "default": [],
+          "description": "Alternative names that produce additional query variants at slightly lower confidence."
+        }
+      }
+    },
+    "GeoRegion": {
+      "type":     "object",
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type":      "string",
+          "minLength": 1,
+          "description": "Primary region name. e.g. 'Lagos', 'Abuja'."
+        },
+        "type": { "$ref": "#/$defs/GeoLocationType" },
+        "aliases": {
+          "type":  "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true,
+          "default": [],
+          "description": "Alternative region names."
+        },
+        "subLocations": {
+          "type":  "array",
+          "items": { "$ref": "#/$defs/GeoSubLocation" },
+          "default": [],
+          "description": "Districts and neighbourhoods used by GeoExpansionStrategy."
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "version":     1,
+      "country":     "Nigeria",
+      "countryCode": "NG",
+      "regions": [
+        {
+          "name":    "Lagos",
+          "type":    "state",
+          "aliases": ["Lagos State"],
+          "subLocations": [
+            { "name": "Victoria Island", "type": "district", "aliases": ["VI"] },
+            { "name": "Lekki",           "type": "district", "aliases": [] }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id":     "https://maps-discovery/schemas/niche-dictionary",
+  "title":   "NicheDictionary",
+  "description": "Schema for niche expansion dictionary YAML files.",
+  "type": "object",
+  "required": ["version", "niche", "terms"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type":    "integer",
+      "enum":    [1],
+      "description": "Schema version — must be 1."
+    },
+    "niche": {
+      "type":        "string",
+      "minLength":   1,
+      "pattern":     "^[a-z][a-z0-9-]*$",
+      "description": "Lowercase kebab-case identifier for this niche. e.g. 'plumbers', 'digital-agencies'."
+    },
+    "terms": {
+      "type":     "array",
+      "minItems": 1,
+      "items": {
+        "type":     "object",
+        "required": ["term"],
+        "additionalProperties": false,
+        "properties": {
+          "term": {
+            "type":      "string",
+            "minLength": 1,
+            "description": "The canonical form of this term used in query matching."
+          },
+          "synonyms": {
+            "type":  "array",
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true,
+            "default": [],
+            "description": "Semantically equivalent phrases. SynonymExpansionStrategy substitutes these for the term."
+          },
+          "modifiers": {
+            "type":  "array",
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true,
+            "default": [],
+            "description": "Qualifying words prepended by ModifierExpansionStrategy. e.g. 'emergency', 'residential'."
+          },
+          "plural": {
+            "type":      "string",
+            "minLength": 1,
+            "description": "Plural form for PluralExpansionStrategy. e.g. 'plumbers' (for term 'plumber')."
+          },
+          "singular": {
+            "type":      "string",
+            "minLength": 1,
+            "description": "Singular form for PluralExpansionStrategy. e.g. 'plumber' (for term 'plumbers')."
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "version": 1,
+      "niche":   "plumbers",
+      "terms": [
+        {
+          "term":      "plumber",
+          "synonyms":  ["plumbing contractor", "pipefitter"],
+          "modifiers": ["emergency", "residential", "licensed"],
+          "plural":    "plumbers",
+          "singular":  "plumber"
+        }
+      ]
+    }
+  ]
+}

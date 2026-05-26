@@ -1,0 +1,72 @@
+{
+  "name": "maps-discovery",
+  "version": "0.1.0",
+  "description": "Modular Google Maps business discovery platform",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0 <23.0.0",
+    "npm": ">=10.2.0"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./core": "./dist/core/index.js",
+    "./core/*": "./dist/core/*.js",
+    "./query-engine": "./dist/query-engine/index.js"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "build:watch": "tsc --project tsconfig.json --watch",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "typecheck:tests": "tsc --project tsconfig.test.json --noEmit",
+    "typecheck:all": "npm run typecheck && npm run typecheck:tests",
+    "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "lint:fix": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"*.json\" \"*.yml\" \"*.md\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"*.json\" \"*.yml\" \"*.md\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "db:migrate": "node --import tsx/esm scripts/db-migrate.ts",
+    "db:seed": "node --import tsx/esm scripts/db-seed.ts",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:reset": "docker compose down -v && docker compose up -d",
+    "docker:logs": "docker compose logs -f",
+    "docker:ps": "docker compose ps",
+    "bootstrap": "node scripts/bootstrap.js",
+    "clean": "rm -rf dist coverage",
+    "clean:all": "rm -rf dist coverage node_modules",
+    "ci": "npm run typecheck:all && npm run lint && npm run format:check && npm run test",
+    "check-env": "node --import tsx/esm scripts/check-env.ts",
+    "smoke": "node --import tsx/esm scripts/smoke-query-engine.ts"
+  },
+  "dependencies": {
+    "bullmq": "^5.7.0",
+    "ioredis": "^5.3.2",
+    "js-yaml": "^4.1.0",
+    "pg": "^8.11.5",
+    "zod": "^3.23.8"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.44.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.6",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.13.0",
+    "@vitest/coverage-v8": "^2.1.9",
+    "@vitest/ui": "^2.1.9",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "playwright": "^1.60.0",
+    "prettier": "^3.3.2",
+    "tsx": "^4.22.3",
+    "typescript": "^5.5.2",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^2.1.9"
+  }
+}

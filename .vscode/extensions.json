@@ -1,0 +1,35 @@
+{
+  "recommendations": [
+    // TypeScript & JavaScript
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "ms-vscode.vscode-typescript-next",
+
+    // Testing
+    "vitest.explorer",
+
+    // Database
+    "mtxr.sqltools",
+    "mtxr.sqltools-driver-pg",
+
+    // Docker
+    "ms-azuretools.vscode-docker",
+
+    // YAML (dictionary files)
+    "redhat.vscode-yaml",
+
+    // Git
+    "eamodio.gitlens",
+    "mhutchie.git-graph",
+
+    // Editor quality of life
+    "streetsidesoftware.code-spell-checker",
+    "usernamehw.errorlens",
+    "christian-kohler.path-intellisense",
+    "aaron-bond.better-comments",
+
+    // Playwright (for when browser integration is added)
+    "ms-playwright.playwright"
+  ],
+  "unwantedRecommendations": []
+}

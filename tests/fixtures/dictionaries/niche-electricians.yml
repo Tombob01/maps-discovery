@@ -1,0 +1,20 @@
+version: 1
+niche: electricians
+terms:
+  - term: electrician
+    synonyms:
+      - electrical contractor
+      - electrical engineer
+    modifiers:
+      - certified
+      - industrial
+      - domestic
+    plural: electricians
+    singular: electrician
+
+  - term: electrical services
+    synonyms:
+      - electrical company
+    modifiers:
+      - local
+      - emergency

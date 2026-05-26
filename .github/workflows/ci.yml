@@ -1,0 +1,122 @@
+# =============================================================================
+# maps-discovery — CI pipeline
+# =============================================================================
+#
+# Runs on every push to main and every pull request.
+#
+# Jobs:
+#   quality  — typecheck, lint, format-check
+#   test     — unit and integration tests with coverage
+#
+# Both jobs must pass before a PR can be merged.
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Cancel in-progress runs on the same branch when a new push arrives
+concurrency:
+  group:             ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_ENV:     test
+  # Use the same credentials as docker-compose for consistency
+  PG_HOST:      localhost
+  PG_PORT:      5432
+  PG_DATABASE:  maps_discovery_test
+  PG_USER:      maps_user
+  PG_PASSWORD:  maps_pass_ci
+  REDIS_HOST:   localhost
+  REDIS_PORT:   6379
+  REDIS_PASSWORD: redis_pass_ci
+  REDIS_DB:     1
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # quality — static analysis, no services required
+  # ---------------------------------------------------------------------------
+  quality:
+    name: Type-check, Lint, Format
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript — src
+        run: npm run typecheck
+
+      - name: TypeScript — tests
+        run: npm run typecheck:tests
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Prettier
+        run: npm run format:check
+
+
+  # ---------------------------------------------------------------------------
+  # test — unit and integration tests with coverage
+  # ---------------------------------------------------------------------------
+  test:
+    name: Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    # Test against the pinned version plus LTS current for forward compatibility
+    strategy:
+      fail-fast: true
+      matrix:
+        node: ["20.14.0"]
+        # Uncomment to also test on Node 22 once it becomes LTS:
+        # node: ["20.14.0", "22"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+        env:
+          CI: true
+
+      - name: Upload coverage report
+        if: matrix.node == '20.14.0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+      # Optional: upload to Codecov if you have an account
+      # - name: Upload to Codecov
+      #   uses: codecov/codecov-action@v4
+      #   with:
+      #     files: ./coverage/lcov.info
+      #     fail_ci_if_error: true

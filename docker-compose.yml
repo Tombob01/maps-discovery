@@ -1,0 +1,139 @@
+# =============================================================================
+# maps-discovery — local development services
+# =============================================================================
+# Provides PostgreSQL and Redis for local development.
+# Does NOT include the application itself — run that with `npm run dev:worker`.
+#
+# Usage:
+#   npm run docker:up      — start all services in background
+#   npm run docker:down    — stop all services (preserves data volumes)
+#   npm run docker:reset   — destroy all data and restart fresh
+#   npm run docker:logs    — stream logs from all services
+#   npm run docker:ps      — show service status
+#
+# Data is persisted in named Docker volumes (postgres_data, redis_data).
+# Run `npm run docker:reset` to wipe all data and start fresh.
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 — primary database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16.3-alpine
+    container_name: maps-discovery-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: maps_discovery
+      POSTGRES_USER: maps_user
+      POSTGRES_PASSWORD: maps_password_dev
+      # Performance tuning for a local development machine.
+      # These are conservative; do not use in production without review.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Init scripts run once on first container start (alphabetical order).
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maps_user -d maps_discovery"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - maps-discovery-net
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 — BullMQ queue backend + cache
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7.2-alpine
+    container_name: maps-discovery-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --save 60 1
+      --loglevel notice
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - maps-discovery-net
+
+  # ---------------------------------------------------------------------------
+  # Redis Commander — optional web UI for Redis inspection
+  # ---------------------------------------------------------------------------
+  # Access at http://localhost:8081
+  # Comment out if you do not need a Redis GUI.
+  redis-commander:
+    image: ghcr.io/joeferner/redis-commander:latest
+    container_name: maps-discovery-redis-ui
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: "local:redis:6379"
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - maps-discovery-net
+    profiles:
+      - tools # only started with: docker compose --profile tools up
+
+  # ---------------------------------------------------------------------------
+  # pgAdmin 4 — optional web UI for PostgreSQL inspection
+  # ---------------------------------------------------------------------------
+  # Access at http://localhost:5050
+  # Login: admin@maps-discovery.local / admin
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: maps-discovery-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@maps-discovery.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - maps-discovery-net
+    profiles:
+      - tools # only started with: docker compose --profile tools up
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  maps-discovery-net:
+    driver: bridge
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local

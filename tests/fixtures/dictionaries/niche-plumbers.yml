@@ -1,0 +1,24 @@
+version: 1
+niche: plumbers
+terms:
+  - term: plumber
+    synonyms:
+      - plumbing contractor
+      - pipefitter
+      - drainage specialist
+    modifiers:
+      - emergency
+      - residential
+      - commercial
+      - licensed
+    plural: plumbers
+    singular: plumber
+
+  - term: plumbing services
+    synonyms:
+      - plumbing company
+      - plumbing firm
+    modifiers:
+      - local
+      - affordable
+    plural: plumbing services

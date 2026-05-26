@@ -1,0 +1,152 @@
+{
+  // ---------------------------------------------------------------------------
+  // Editor baseline
+  // ---------------------------------------------------------------------------
+  "editor.tabSize":                 2,
+  "editor.insertSpaces":            true,
+  "editor.detectIndentation":       false,
+  "editor.formatOnSave":            true,
+  "editor.formatOnPaste":           false,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint":         "explicit",
+    "source.organizeImports":       "never"   // let ESLint import/order rule handle this
+  },
+  "editor.rulers":                  [100],
+  "editor.wordWrap":                "off",
+  "editor.renderWhitespace":        "boundary",
+  "editor.suggestSelection":        "first",
+  "editor.linkedEditing":           true,
+
+  // ---------------------------------------------------------------------------
+  // Prettier — default formatter for all supported file types
+  // ---------------------------------------------------------------------------
+  "editor.defaultFormatter":        "esbenp.prettier-vscode",
+  "[typescript]": {
+    "editor.defaultFormatter":      "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter":      "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter":      "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter":      "esbenp.prettier-vscode"
+  },
+  "[yaml]": {
+    "editor.defaultFormatter":      "esbenp.prettier-vscode"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter":      "esbenp.prettier-vscode",
+    "editor.wordWrap":              "on"
+  },
+
+  // ---------------------------------------------------------------------------
+  // ESLint — use flat config
+  // ---------------------------------------------------------------------------
+  "eslint.experimental.useFlatConfig": true,
+  "eslint.validate": [
+    "typescript",
+    "javascript"
+  ],
+
+  // ---------------------------------------------------------------------------
+  // TypeScript — use workspace version, not VS Code's bundled one
+  // ---------------------------------------------------------------------------
+  "typescript.tsdk":                    "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "typescript.preferences.importModuleSpecifier": "shortest",
+  "typescript.preferences.quoteStyle": "double",
+  "typescript.inlayHints.parameterNames.enabled": "literals",
+  "typescript.inlayHints.variableTypes.enabled": false,
+  "typescript.inlayHints.functionLikeReturnTypes.enabled": true,
+
+  // ---------------------------------------------------------------------------
+  // Vitest
+  // ---------------------------------------------------------------------------
+  "vitest.enable":       true,
+  "vitest.commandLine":  "npx vitest",
+
+  // ---------------------------------------------------------------------------
+  // File explorer
+  // ---------------------------------------------------------------------------
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline":     true,
+  "files.trimFinalNewlines":      true,
+  "files.eol":                    "\n",
+  "files.exclude": {
+    "**/.git":           true,
+    "**/node_modules":   true,
+    "**/dist":           true,
+    "**/coverage":       true,
+    "**/.DS_Store":      true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/dist/**":         true,
+    "**/coverage/**":     true
+  },
+
+  // ---------------------------------------------------------------------------
+  // Search
+  // ---------------------------------------------------------------------------
+  "search.exclude": {
+    "**/node_modules":  true,
+    "**/dist":          true,
+    "**/coverage":      true,
+    "**/*.snap":        true
+  },
+
+  // ---------------------------------------------------------------------------
+  // YAML — associate dictionary files with schema validation
+  // ---------------------------------------------------------------------------
+  "yaml.schemas": {
+    "./schemas/niche-dictionary.schema.json": "data/dictionaries/niches/*.yml",
+    "./schemas/geo-dictionary.schema.json":   "data/dictionaries/geo/*.yml"
+  },
+  "yaml.format.enable": true,
+
+  // ---------------------------------------------------------------------------
+  // SQLTools — connect to the docker-compose postgres instance
+  // ---------------------------------------------------------------------------
+  "sqltools.connections": [
+    {
+      "name":     "maps_discovery (local docker)",
+      "driver":   "PostgreSQL",
+      "host":     "localhost",
+      "port":     5432,
+      "database": "maps_discovery",
+      "username": "maps_user",
+      "password": "maps_pass_local"
+    }
+  ],
+
+  // ---------------------------------------------------------------------------
+  // Spell checker — add project-specific terms
+  // ---------------------------------------------------------------------------
+  "cSpell.words": [
+    "bullmq",
+    "ioredis",
+    "canonicalize",
+    "canonicalized",
+    "canonicalizer",
+    "niche",
+    "niches",
+    "passthrough",
+    "dedup",
+    "deduplication",
+    "deduplicator",
+    "fingerprint",
+    "provenance",
+    "normalizer",
+    "normalizers",
+    "pipefitter",
+    "plumbers",
+    "lekki",
+    "ikeja",
+    "surulere",
+    "maitama",
+    "unaccent",
+    "trgm"
+  ]
+}
