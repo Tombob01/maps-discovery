@@ -2,7 +2,7 @@
  * GoogleMapsAdapter.test.ts
  *
  * Unit tests for GoogleMapsAdapter extraction logic.
- * Uses mock Page and ElementHandle — no real browser launched.
+ * Uses mock Page and ElementHandle ï¿½ no real browser launched.
  *
  * Covers:
  *   - getResultCards returns array of element handles
@@ -42,7 +42,9 @@ const PLACE_URL =
 describe("GoogleMapsAdapter.getResultCards()", () => {
   it("returns empty array when page.$$ throws", async () => {
     const page = makeMockPage({
-      $$: async () => { throw new Error("page error"); },
+      $$: async () => {
+        throw new Error("page error");
+      },
     });
     const adapter = makeAdapter();
     const cards = await adapter.getResultCards(page as never);
@@ -67,8 +69,7 @@ describe("GoogleMapsAdapter.getResultCards()", () => {
 describe("GoogleMapsAdapter.getCardListingUrl()", () => {
   it("returns href from resultItemLink element", async () => {
     const link = makeMockElementHandle({
-      getAttribute: async (attr) =>
-        attr === "href" ? PLACE_URL : null,
+      getAttribute: async (attr) => (attr === "href" ? PLACE_URL : null),
     });
     const card = makeMockElementHandle({
       $: async () => link,
@@ -87,16 +88,19 @@ describe("GoogleMapsAdapter.getCardListingUrl()", () => {
 });
 
 // ---------------------------------------------------------------------------
-// extractFromCard — fallback path (click throws)
+// extractFromCard ï¿½ fallback path (click throws)
 // ---------------------------------------------------------------------------
 
-describe("GoogleMapsAdapter.extractFromCard() — card-only fallback", () => {
+describe("GoogleMapsAdapter.extractFromCard() ï¿½ card-only fallback", () => {
   it("returns detailPanelScraped = false when click fails", async () => {
     const card = makeMockElementHandle({
-      click: async () => { throw new Error("click failed"); },
-      $: async () => makeMockElementHandle({
-        getAttribute: async (attr) => attr === "href" ? PLACE_URL : null,
-      }),
+      click: async () => {
+        throw new Error("click failed");
+      },
+      $: async () =>
+        makeMockElementHandle({
+          getAttribute: async (attr) => (attr === "href" ? PLACE_URL : null),
+        }),
       textContent: async () => "Ace Plumbers",
     });
     const page = makeMockPage();
@@ -112,10 +116,13 @@ describe("GoogleMapsAdapter.extractFromCard() — card-only fallback", () => {
 
   it("extracts placeId from listing URL in fallback path", async () => {
     const card = makeMockElementHandle({
-      click: async () => { throw new Error("click failed"); },
-      $: async () => makeMockElementHandle({
-        getAttribute: async (attr) => attr === "href" ? PLACE_URL : null,
-      }),
+      click: async () => {
+        throw new Error("click failed");
+      },
+      $: async () =>
+        makeMockElementHandle({
+          getAttribute: async (attr) => (attr === "href" ? PLACE_URL : null),
+        }),
     });
     const page = makeMockPage();
     const adapter = makeAdapter();
@@ -130,10 +137,13 @@ describe("GoogleMapsAdapter.extractFromCard() — card-only fallback", () => {
 
   it("extracts coordinates from listing URL in fallback path", async () => {
     const card = makeMockElementHandle({
-      click: async () => { throw new Error("click failed"); },
-      $: async () => makeMockElementHandle({
-        getAttribute: async (attr) => attr === "href" ? PLACE_URL : null,
-      }),
+      click: async () => {
+        throw new Error("click failed");
+      },
+      $: async () =>
+        makeMockElementHandle({
+          getAttribute: async (attr) => (attr === "href" ? PLACE_URL : null),
+        }),
     });
     const page = makeMockPage();
     const adapter = makeAdapter();
@@ -149,7 +159,9 @@ describe("GoogleMapsAdapter.extractFromCard() — card-only fallback", () => {
 
   it("preserves searchQuery and resultPosition in fallback", async () => {
     const card = makeMockElementHandle({
-      click: async () => { throw new Error("click failed"); },
+      click: async () => {
+        throw new Error("click failed");
+      },
       $: async () => null,
     });
     const page = makeMockPage();
@@ -166,16 +178,17 @@ describe("GoogleMapsAdapter.extractFromCard() — card-only fallback", () => {
 });
 
 // ---------------------------------------------------------------------------
-// extractFromCard — detail panel path
+// extractFromCard ï¿½ detail panel path
 // ---------------------------------------------------------------------------
 
-describe("GoogleMapsAdapter.extractFromCard() — detail panel", () => {
+describe("GoogleMapsAdapter.extractFromCard() ï¿½ detail panel", () => {
   it("returns detailPanelScraped = true when panel opens", async () => {
     const card = makeMockElementHandle({
       click: async () => {},
-      $: async () => makeMockElementHandle({
-        getAttribute: async (attr) => attr === "href" ? PLACE_URL : null,
-      }),
+      $: async () =>
+        makeMockElementHandle({
+          getAttribute: async (attr) => (attr === "href" ? PLACE_URL : null),
+        }),
     });
     const page = makeMockPage({
       waitForSelector: async () => makeMockElementHandle(),
@@ -216,13 +229,15 @@ describe("GoogleMapsAdapter.extractFromCard() — detail panel", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Incomplete payload — no identifying fields
+// Incomplete payload ï¿½ no identifying fields
 // ---------------------------------------------------------------------------
 
-describe("GoogleMapsAdapter.extractFromCard() — empty result", () => {
+describe("GoogleMapsAdapter.extractFromCard() ï¿½ empty result", () => {
   it("returns a payload with at least searchQuery when all DOM reads fail", async () => {
     const card = makeMockElementHandle({
-      click: async () => { throw new Error("click failed"); },
+      click: async () => {
+        throw new Error("click failed");
+      },
       $: async () => null,
       textContent: async () => null,
     });
@@ -236,7 +251,7 @@ describe("GoogleMapsAdapter.extractFromCard() — empty result", () => {
     );
     expect(payload.searchQuery).toBe("plumbers Lagos");
     expect(payload.resultPosition).toBe(3);
-    // No identifiers available — placeId, name, phone all undefined
+    // No identifiers available ï¿½ placeId, name, phone all undefined
     expect(payload.placeId).toBeUndefined();
     expect(payload.name).toBeUndefined();
   });

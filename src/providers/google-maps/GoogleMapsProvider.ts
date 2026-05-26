@@ -72,9 +72,9 @@ const MAX_EMPTY_SCROLL_ATTEMPTS = 4;
 // ---------------------------------------------------------------------------
 
 interface GoogleMapsCursor {
-  /** IDs of results already yielded — used for identity-based resume. */
+  /** IDs of results already yielded ï¿½ used for identity-based resume. */
   readonly yieldedIds: readonly string[];
-  /** The search query text — used to verify the token is still valid. */
+  /** The search query text ï¿½ used to verify the token is still valid. */
   readonly queryHash: string;
 }
 
@@ -296,7 +296,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
           const card = cards[i];
           if (card === undefined) continue;
 
-          // Skip cards already yielded in a previous session (identity-based — handled by seenPlaceIds pre-population)
+          // Skip cards already yielded in a previous session (identity-based ï¿½ handled by seenPlaceIds pre-population)
 
           // Apply inter-request delay
           if (i > 0) {
@@ -331,7 +331,10 @@ export class GoogleMapsProvider implements IBrowserProvider {
 
           totalYielded++;
 
-          const resumeToken = buildResumeToken(Array.from(seenPlaceIds), query.queryHash);
+          const resumeToken = buildResumeToken(
+            Array.from(seenPlaceIds),
+            query.queryHash,
+          );
 
           const result: ProviderResult = {
             providerId: PROVIDER_ID,
