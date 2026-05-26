@@ -1,4 +1,4 @@
-export type {
+﻿export type {
   IPipelineStage,
   StageContext,
   StageError,
@@ -6,3 +6,5 @@ export type {
 } from "./IPipelineStage.js";
 export { PipelineRunner } from "./PipelineRunner.js";
 export { NormalizationStage } from "./NormalizationStage.js";
+export { RunCoordinator } from "./RunCoordinator.js";
+export type { RunCoordinatorOptions } from "./RunCoordinator.js";
