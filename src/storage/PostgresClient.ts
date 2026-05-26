@@ -18,7 +18,7 @@
 
 import pg from "pg";
 
-const { Pool } = pg;
+const { Pool: pgPool } = pg;
 
 // ---------------------------------------------------------------------------
 // Config
@@ -61,7 +61,7 @@ export class PostgresClient {
   private readonly pool: pg.Pool;
 
   constructor(config: PostgresClientConfig) {
-    this.pool = new Pool({
+    this.pool = new pgPool({
       host: config.host,
       port: config.port,
       database: config.database,
@@ -70,7 +70,7 @@ export class PostgresClient {
       max: config.max ?? 10,
       idleTimeoutMillis: config.idleTimeoutMillis ?? 30_000,
       connectionTimeoutMillis: config.connectionTimeoutMillis ?? 5_000,
-      ssl: config.ssl as pg.PoolConfig["ssl"],
+      ssl: config.ssl,
     });
   }
 
