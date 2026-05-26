@@ -1,10 +1,10 @@
-/**
+﻿/**
  * tests/unit/storage/adapters.test.ts
  *
  * Tests for PostgresRunServiceAdapter and PostgresRecordServiceAdapter,
- * plus the end-to-end wiring of NormalizationStage → RunLifecycleService.
+ * plus the end-to-end wiring of NormalizationStage â†’ RunLifecycleService.
  *
- * No real DB — all storage backed by in-memory stubs.
+ * No real DB â€” all storage backed by in-memory stubs.
  *
  * Covers:
  *   PostgresRunServiceAdapter
@@ -50,22 +50,42 @@ import { ok } from "../../../src/core/types/common.js";
 class StubRunStore implements IRunStore {
   private readonly map = new Map<string, Run>();
 
-  seed(run: Run): void { this.map.set(run.id, run); }
+  seed(run: Run): void {
+    this.map.set(run.id, run);
+  }
 
-  async create(run: Run): Promise<void> { this.map.set(run.id, run); }
-  async getById(id: string): Promise<Run | null> { return this.map.get(id) ?? null; }
-  async list(): Promise<readonly Run[]> { return Array.from(this.map.values()); }
-  async update(run: Run): Promise<void> { this.map.set(run.id, run); }
-  async delete(id: string): Promise<boolean> { return this.map.delete(id); }
+  async create(run: Run): Promise<void> {
+    this.map.set(run.id, run);
+  }
+  async getById(id: string): Promise<Run | null> {
+    return this.map.get(id) ?? null;
+  }
+  async list(): Promise<readonly Run[]> {
+    return Array.from(this.map.values());
+  }
+  async update(run: Run): Promise<void> {
+    this.map.set(run.id, run);
+  }
+  async delete(id: string): Promise<boolean> {
+    return this.map.delete(id);
+  }
 }
 
 class StubRecordStore implements IRecordStore {
   readonly inserted: BusinessRecord[] = [];
 
-  async insert(r: BusinessRecord): Promise<void> { this.inserted.push(r); }
-  async insertMany(rs: readonly BusinessRecord[]): Promise<void> { this.inserted.push(...rs); }
-  async getByRunId(_id: string): Promise<readonly BusinessRecord[]> { return this.inserted; }
-  async countByRunId(_id: string): Promise<number> { return this.inserted.length; }
+  async insert(r: BusinessRecord): Promise<void> {
+    this.inserted.push(r);
+  }
+  async insertMany(rs: readonly BusinessRecord[]): Promise<void> {
+    this.inserted.push(...rs);
+  }
+  async getByRunId(_id: string): Promise<readonly BusinessRecord[]> {
+    return this.inserted;
+  }
+  async countByRunId(_id: string): Promise<number> {
+    return this.inserted.length;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +100,12 @@ function makeRun(): Run {
     status: "running",
     config: {
       runId: RUN_ID,
-      seeds: [{ niche: "plumbers", location: { displayName: "Lagos", country: "NG" } }],
+      seeds: [
+        {
+          niche: "plumbers",
+          location: { displayName: "Lagos", country: "NG" },
+        },
+      ],
       providerIds: ["google-maps"],
       forceReprocess: false,
     },
@@ -88,9 +113,14 @@ function makeRun(): Run {
     completedAt: null,
     createdAt: new Date(),
     stats: {
-      queriesGenerated: 0, queriesDispatched: 0, rawResultsFound: 0,
-      recordsNormalized: 0, recordsUnique: 0, recordsDuplicate: 0,
-      recordsExported: 0, errors: 0,
+      queriesGenerated: 0,
+      queriesDispatched: 0,
+      rawResultsFound: 0,
+      recordsNormalized: 0,
+      recordsUnique: 0,
+      recordsDuplicate: 0,
+      recordsExported: 0,
+      errors: 0,
     },
   };
 }
@@ -102,7 +132,15 @@ function makeRecord(id = "biz-001"): BusinessRecord {
     externalIds: { googlePlaceId: id },
     name: "Test Biz",
     normalizedName: "test biz",
-    address: { raw: "1 Main St", street: "1 Main St", city: "Lagos", state: null, postalCode: null, country: "NG", countryCode: "NG" },
+    address: {
+      raw: "1 Main St",
+      street: "1 Main St",
+      city: "Lagos",
+      state: null,
+      postalCode: null,
+      country: "NG",
+      countryCode: "NG",
+    },
     geo: null,
     phone: null,
     normalizedPhone: null,
@@ -235,18 +273,24 @@ describe("PostgresRecordServiceAdapter", () => {
   });
 
   it("list() total reflects all records not just page", async () => {
-    const records = Array.from({ length: 10 }, (_, i) => makeRecord(`biz-${i}`));
+    const records = Array.from({ length: 10 }, (_, i) =>
+      makeRecord(`biz-${i}`),
+    );
     await recordStore.insertMany(records);
-    const { total } = await adapter.list({ runId: RUN_ID, page: 1, pageSize: 3 });
+    const { total } = await adapter.list({
+      runId: RUN_ID,
+      page: 1,
+      pageSize: 3,
+    });
     expect(total).toBe(10);
   });
 });
 
 // ---------------------------------------------------------------------------
-// End-to-end: NormalizationStage → RunLifecycleService wiring
+// End-to-end: NormalizationStage â†’ RunLifecycleService wiring
 // ---------------------------------------------------------------------------
 
-describe("NormalizationStage + RunLifecycleService — end-to-end write path", () => {
+describe("NormalizationStage + RunLifecycleService â€” end-to-end write path", () => {
   it("onSuccess persists record and increments recordsNormalized", async () => {
     const runStore = new StubRunStore();
     const recordStore = new StubRecordStore();
@@ -275,7 +319,8 @@ describe("NormalizationStage + RunLifecycleService — end-to-end write path", (
       {
         runId: RUN_ID,
         queryId: "q-1" as QueryID,
-        rawResultId: "prov-001",
+        rawResultId:
+          "prov-001" as import("../../../src/core/types/common.js").UUID,
         providerId: "google-maps",
       },
       { runId: RUN_ID, stageId: "stage-1", attempt: 1 },
@@ -316,7 +361,8 @@ describe("NormalizationStage + RunLifecycleService — end-to-end write path", (
       {
         runId: RUN_ID,
         queryId: "q-1" as QueryID,
-        rawResultId: "prov-001",
+        rawResultId:
+          "prov-001" as import("../../../src/core/types/common.js").UUID,
         providerId: "google-maps",
       },
       { runId: RUN_ID, stageId: "stage-1", attempt: 1 },
@@ -345,7 +391,8 @@ describe("NormalizationStage + RunLifecycleService — end-to-end write path", (
       {
         runId: RUN_ID,
         queryId: "q-1" as QueryID,
-        rawResultId: "nonexistent",
+        rawResultId:
+          "nonexistent" as import("../../../src/core/types/common.js").UUID,
         providerId: "google-maps",
       },
       { runId: RUN_ID, stageId: "stage-1", attempt: 1 },

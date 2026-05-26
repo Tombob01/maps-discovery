@@ -70,9 +70,7 @@ export class RunLifecycleService {
   async start(runId: RunID): Promise<Run> {
     const run = await this.runStore.getById(runId);
     if (run === null) {
-      throw new Error(
-        `RunLifecycleService.start: run "${runId}" not found`,
-      );
+      throw new Error(`RunLifecycleService.start: run "${runId}" not found`);
     }
 
     const updated: Run = {
@@ -98,9 +96,7 @@ export class RunLifecycleService {
   async complete(runId: RunID, finalStats: RunStats): Promise<Run> {
     const run = await this.runStore.getById(runId);
     if (run === null) {
-      throw new Error(
-        `RunLifecycleService.complete: run "${runId}" not found`,
-      );
+      throw new Error(`RunLifecycleService.complete: run "${runId}" not found`);
     }
 
     const updated: Run = {
@@ -131,14 +127,13 @@ export class RunLifecycleService {
   async fail(runId: RunID, partialStats?: Partial<RunStats>): Promise<Run> {
     const run = await this.runStore.getById(runId);
     if (run === null) {
-      throw new Error(
-        `RunLifecycleService.fail: run "${runId}" not found`,
-      );
+      throw new Error(`RunLifecycleService.fail: run "${runId}" not found`);
     }
 
-    const mergedStats: RunStats = partialStats !== undefined
-      ? mergeStats(run.stats, partialStats)
-      : run.stats;
+    const mergedStats: RunStats =
+      partialStats !== undefined
+        ? mergeStats(run.stats, partialStats)
+        : run.stats;
 
     const updated: Run = {
       ...run,
@@ -161,10 +156,7 @@ export class RunLifecycleService {
    *
    * Throws if the run does not exist.
    */
-  async incrementStats(
-    runId: RunID,
-    delta: Partial<RunStats>,
-  ): Promise<Run> {
+  async incrementStats(runId: RunID, delta: Partial<RunStats>): Promise<Run> {
     const run = await this.runStore.getById(runId);
     if (run === null) {
       throw new Error(
@@ -218,21 +210,13 @@ export class RunLifecycleService {
  */
 function mergeStats(base: RunStats, delta: Partial<RunStats>): RunStats {
   return {
-    queriesGenerated:
-      base.queriesGenerated + (delta.queriesGenerated ?? 0),
-    queriesDispatched:
-      base.queriesDispatched + (delta.queriesDispatched ?? 0),
-    rawResultsFound:
-      base.rawResultsFound + (delta.rawResultsFound ?? 0),
-    recordsNormalized:
-      base.recordsNormalized + (delta.recordsNormalized ?? 0),
-    recordsUnique:
-      base.recordsUnique + (delta.recordsUnique ?? 0),
-    recordsDuplicate:
-      base.recordsDuplicate + (delta.recordsDuplicate ?? 0),
-    recordsExported:
-      base.recordsExported + (delta.recordsExported ?? 0),
-    errors:
-      base.errors + (delta.errors ?? 0),
+    queriesGenerated: base.queriesGenerated + (delta.queriesGenerated ?? 0),
+    queriesDispatched: base.queriesDispatched + (delta.queriesDispatched ?? 0),
+    rawResultsFound: base.rawResultsFound + (delta.rawResultsFound ?? 0),
+    recordsNormalized: base.recordsNormalized + (delta.recordsNormalized ?? 0),
+    recordsUnique: base.recordsUnique + (delta.recordsUnique ?? 0),
+    recordsDuplicate: base.recordsDuplicate + (delta.recordsDuplicate ?? 0),
+    recordsExported: base.recordsExported + (delta.recordsExported ?? 0),
+    errors: base.errors + (delta.errors ?? 0),
   };
 }

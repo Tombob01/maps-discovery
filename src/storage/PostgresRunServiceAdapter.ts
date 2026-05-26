@@ -33,7 +33,9 @@ export interface RunServiceRunStore {
 
 export interface RunServiceRecordStore {
   findByRunId(runId: string): Promise<BusinessRecord[]>;
-  list(req: RecordListRequest): Promise<{ items: BusinessRecord[]; total: number }>;
+  list(
+    req: RecordListRequest,
+  ): Promise<{ items: BusinessRecord[]; total: number }>;
 }
 
 export interface RecordListRequest {

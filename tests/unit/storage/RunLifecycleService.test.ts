@@ -21,7 +21,12 @@ import type { IRunStore } from "../../../src/storage/IRunStore.js";
 import type { IRecordStore } from "../../../src/storage/IRecordStore.js";
 import type { Run, RunStats } from "../../../src/core/models/Job.js";
 import type { BusinessRecord } from "../../../src/core/models/BusinessRecord.js";
-import type { RunID, BusinessID, Fingerprint, QueryID } from "../../../src/core/types/common.js";
+import type {
+  RunID,
+  BusinessID,
+  Fingerprint,
+  QueryID,
+} from "../../../src/core/types/common.js";
 
 // ---------------------------------------------------------------------------
 // Stub IRunStore — in-memory map
@@ -137,7 +142,8 @@ function makeRecord(id: string): BusinessRecord {
     },
     geo: { lat: 6.5244, lng: 3.3792 },
     phone: "+2348012345678",
-    normalizedPhone: "+2348012345678" as import("../../../src/core/types/common.js").E164Phone,
+    normalizedPhone:
+      "+2348012345678" as import("../../../src/core/types/common.js").E164Phone,
     website: null,
     categories: ["plumbing"],
     primaryCategory: "plumbing",
@@ -298,7 +304,10 @@ describe("RunLifecycleService — fail()", () => {
         stats: { ...makeRun().stats, rawResultsFound: 10, errors: 1 },
       }),
     );
-    const updated = await service.fail(RUN_ID, { errors: 2, rawResultsFound: 5 });
+    const updated = await service.fail(RUN_ID, {
+      errors: 2,
+      rawResultsFound: 5,
+    });
     expect(updated.stats.errors).toBe(3);
     expect(updated.stats.rawResultsFound).toBe(15);
   });
@@ -328,7 +337,10 @@ describe("RunLifecycleService — incrementStats()", () => {
 
   it("adds delta values to existing stats", async () => {
     runStore.seed(makeRun({ status: "running" }));
-    await service.incrementStats(RUN_ID, { recordsNormalized: 5, rawResultsFound: 10 });
+    await service.incrementStats(RUN_ID, {
+      recordsNormalized: 5,
+      rawResultsFound: 10,
+    });
     const run = await runStore.getById(RUN_ID);
     expect(run?.stats.recordsNormalized).toBe(5);
     expect(run?.stats.rawResultsFound).toBe(10);
@@ -341,7 +353,12 @@ describe("RunLifecycleService — incrementStats()", () => {
   });
 
   it("partial delta leaves other counters unchanged", async () => {
-    runStore.seed(makeRun({ status: "running", stats: { ...makeRun().stats, recordsExported: 3 } }));
+    runStore.seed(
+      makeRun({
+        status: "running",
+        stats: { ...makeRun().stats, recordsExported: 3 },
+      }),
+    );
     await service.incrementStats(RUN_ID, { errors: 1 });
     const run = await runStore.getById(RUN_ID);
     expect(run?.stats.recordsExported).toBe(3);

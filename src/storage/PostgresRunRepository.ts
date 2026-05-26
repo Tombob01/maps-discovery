@@ -143,10 +143,9 @@ export class PostgresRunRepository implements IRunStore {
   // ---------------------------------------------------------------------------
 
   async delete(runId: string): Promise<boolean> {
-    const { rowCount } = await this.db.query(
-      `DELETE FROM runs WHERE id = $1`,
-      [runId],
-    );
+    const { rowCount } = await this.db.query(`DELETE FROM runs WHERE id = $1`, [
+      runId,
+    ]);
     return (rowCount ?? 0) > 0;
   }
 }
