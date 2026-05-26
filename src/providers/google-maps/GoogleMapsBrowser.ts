@@ -285,7 +285,7 @@ export class GoogleMapsBrowser {
     const url = `${GOOGLE_MAPS_BASE_URL}/search/${encoded}`;
 
     try {
-      await page.goto(url, { waitUntil: "networkidle" });
+      await page.goto(url, { waitUntil: "domcontentloaded" });
 
       // Handle cookie / consent dialog if present
       await this._dismissConsentDialog(page);

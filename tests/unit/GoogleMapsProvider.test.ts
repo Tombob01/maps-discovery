@@ -468,7 +468,7 @@ describe("GoogleMapsProvider — discover() ResumeToken", () => {
         pageRequest: {
           kind: "cursor",
           cursor: Buffer.from(
-            JSON.stringify({ yieldedCount: 5, queryHash: "b".repeat(64) }),
+            JSON.stringify({ yieldedIds: [], queryHash: "b".repeat(64) }),
           ).toString("base64url"),
         },
         createdAt: Date.now(),
@@ -506,7 +506,7 @@ describe("GoogleMapsProvider — discover() ResumeToken", () => {
         pageRequest: {
           kind: "cursor",
           cursor: Buffer.from(
-            JSON.stringify({ yieldedCount: 0, queryHash }),
+            JSON.stringify({ yieldedIds: [], queryHash }),
           ).toString("base64url"),
         },
         createdAt: Date.now(),

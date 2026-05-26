@@ -52,8 +52,8 @@ function decodeCursor(encoded) {
         const parsed = JSON.parse(json);
         if (typeof parsed === "object" &&
             parsed !== null &&
-            "yieldedCount" in parsed &&
-            typeof parsed.yieldedCount === "number" &&
+            "yieldedIds" in parsed &&
+            Array.isArray(parsed.yieldedIds) &&
             "queryHash" in parsed &&
             typeof parsed.queryHash === "string") {
             return parsed;
@@ -64,15 +64,15 @@ function decodeCursor(encoded) {
         return null;
     }
 }
-function buildResumeToken(yieldedCount, queryHash) {
-    const cursor = { yieldedCount, queryHash };
+function buildResumeToken(yieldedIds, queryHash) {
+    const cursor = { yieldedIds, queryHash };
     return {
         strategy: "cursor",
         pageRequest: {
             kind: "cursor",
             cursor: encodeCursor(cursor),
         },
-        providerContext: { yieldedCount },
+        providerContext: { yieldedCount: yieldedIds.length },
         createdAt: Date.now(),
     };
 }
@@ -150,7 +150,9 @@ export class GoogleMapsProvider {
         }
         const maxResults = options?.maxResults ?? GOOGLE_MAPS_MAX_RESULTS;
         // ── Decode resume cursor ─────────────────────────────────────────────────
-        let skipCount = 0; // how many results to skip (already yielded in prior session)
+        // Identity-based resume: pre-populate seenPlaceIds from the token so we
+        // skip any result whose ID was already yielded, regardless of position.
+        const resumedIds = new Set();
         if (options?.resumeToken !== undefined) {
             const token = options.resumeToken;
             if (token.strategy === "cursor" && token.pageRequest.kind === "cursor") {
@@ -158,7 +160,9 @@ export class GoogleMapsProvider {
                 if (decoded === null || decoded.queryHash !== query.queryHash) {
                     throw ProviderError.fatal("RESUME_TOKEN_STALE", PROVIDER_ID, "Resume token is stale or belongs to a different query");
                 }
-                skipCount = decoded.yieldedCount;
+                for (const id of decoded.yieldedIds) {
+                    resumedIds.add(id);
+                }
             }
         }
         // ── Open a new page ──────────────────────────────────────────────────────
@@ -172,7 +176,7 @@ export class GoogleMapsProvider {
             if (!navResult.ok)
                 throw navResult.error;
             // ── Scraping loop ──────────────────────────────────────────────────────
-            const seenPlaceIds = new Set();
+            const seenPlaceIds = new Set(resumedIds);
             let totalYielded = 0;
             let emptyScrolls = 0;
             let lastCardCount = 0;
@@ -202,9 +206,7 @@ export class GoogleMapsProvider {
                     const card = cards[i];
                     if (card === undefined)
                         continue;
-                    // Skip cards we've already yielded in a previous session
-                    if (i < skipCount)
-                        continue;
+                    // Skip cards already yielded in a previous session (identity-based � handled by seenPlaceIds pre-population)
                     // Apply inter-request delay
                     if (i > 0) {
                         const delay = this.policy.rateLimit.minDelayBetweenRequestsMs +
@@ -228,7 +230,7 @@ export class GoogleMapsProvider {
                         continue;
                     seenPlaceIds.add(resultId);
                     totalYielded++;
-                    const resumeToken = buildResumeToken(totalYielded, query.queryHash);
+                    const resumeToken = buildResumeToken(Array.from(seenPlaceIds), query.queryHash);
                     const result = {
                         providerId: PROVIDER_ID,
                         providerResultId: resultId,

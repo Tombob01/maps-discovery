@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @module providers/google-maps/GoogleMapsAdapter
  *
  * Extracts structured raw data from Google Maps DOM.
@@ -8,13 +8,13 @@
  *   - Open each card's detail panel and extract all available fields
  *   - Extract the Place ID from the listing URL
  *   - Extract GPS coordinates from the URL or map state
- *   - Produce GoogleMapsRawPayload — no normalization, no transformation
+ *   - Produce GoogleMapsRawPayload â€” no normalization, no transformation
  *
  * Rules:
  *   - Returns null / undefined for any field that cannot be extracted
- *   - Never throws — all errors become null/undefined field values or
+ *   - Never throws â€” all errors become null/undefined field values or
  *     are surfaced via the Result return type on page-level operations
- *   - No business logic — extraction only
+ *   - No business logic â€” extraction only
  */
 
 import { humanDelay } from "./GoogleMapsBrowser.js";
@@ -24,7 +24,7 @@ import type { GoogleMapsRawPayload } from "./GoogleMapsRawPayload.js";
 import type { Page, ElementHandle } from "playwright";
 
 // ---------------------------------------------------------------------------
-// Extraction helpers — pure DOM reading, no side effects
+// Extraction helpers â€” pure DOM reading, no side effects
 // ---------------------------------------------------------------------------
 
 /**
@@ -37,7 +37,7 @@ import type { Page, ElementHandle } from "playwright";
  * Returns undefined if the Place ID cannot be extracted.
  */
 function extractPlaceId(url: string): string | undefined {
-  // Format 1: !1s<placeId>! — most common in modern Maps URLs
+  // Format 1: !1s<placeId>! â€” most common in modern Maps URLs
   const match1 = url.match(/!1s(ChIJ[^!]+)/);
   if (match1?.[1]) return decodeURIComponent(match1[1]);
 
@@ -120,7 +120,7 @@ export class GoogleMapsAdapter {
 
   /**
    * Returns all currently-rendered result card elements in the sidebar.
-   * The list grows as the sidebar is scrolled — call this after each scroll.
+   * The list grows as the sidebar is scrolled â€” call this after each scroll.
    */
   async getResultCards(page: Page): Promise<ElementHandle[]> {
     try {
@@ -280,7 +280,7 @@ export class GoogleMapsAdapter {
 
       const itemId = await phoneBtn.getAttribute("data-item-id");
       if (itemId) {
-        // data-item-id="phone:tel:+2348012345678" → "+2348012345678"
+        // data-item-id="phone:tel:+2348012345678" â†’ "+2348012345678"
         const match = itemId.match(/phone:tel:(.+)/);
         if (match?.[1]) return decodeURIComponent(match[1]);
       }

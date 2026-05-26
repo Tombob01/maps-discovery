@@ -72,9 +72,9 @@ const MAX_EMPTY_SCROLL_ATTEMPTS = 4;
 // ---------------------------------------------------------------------------
 
 interface GoogleMapsCursor {
-  /** Number of results already yielded in the previous session. */
-  readonly yieldedCount: number;
-  /** The search query text — used to verify the token is still valid. */
+  /** IDs of results already yielded � used for identity-based resume. */
+  readonly yieldedIds: readonly string[];
+  /** The search query text � used to verify the token is still valid. */
   readonly queryHash: string;
 }
 
@@ -89,8 +89,8 @@ function decodeCursor(encoded: string): GoogleMapsCursor | null {
     if (
       typeof parsed === "object" &&
       parsed !== null &&
-      "yieldedCount" in parsed &&
-      typeof (parsed as { yieldedCount: unknown }).yieldedCount === "number" &&
+      "yieldedIds" in parsed &&
+      Array.isArray((parsed as { yieldedIds: unknown }).yieldedIds) &&
       "queryHash" in parsed &&
       typeof (parsed as { queryHash: unknown }).queryHash === "string"
     ) {
@@ -103,17 +103,17 @@ function decodeCursor(encoded: string): GoogleMapsCursor | null {
 }
 
 function buildResumeToken(
-  yieldedCount: number,
+  yieldedIds: readonly string[],
   queryHash: string,
 ): ResumeToken {
-  const cursor: GoogleMapsCursor = { yieldedCount, queryHash };
+  const cursor: GoogleMapsCursor = { yieldedIds, queryHash };
   return {
     strategy: "cursor",
     pageRequest: {
       kind: "cursor",
       cursor: encodeCursor(cursor),
     },
-    providerContext: { yieldedCount },
+    providerContext: { yieldedCount: yieldedIds.length },
     createdAt: Date.now(),
   };
 }
@@ -219,7 +219,9 @@ export class GoogleMapsProvider implements IBrowserProvider {
     const maxResults = options?.maxResults ?? GOOGLE_MAPS_MAX_RESULTS;
 
     // ── Decode resume cursor ─────────────────────────────────────────────────
-    let skipCount = 0; // how many results to skip (already yielded in prior session)
+    // Identity-based resume: pre-populate seenPlaceIds from the token so we
+    // skip any result whose ID was already yielded, regardless of position.
+    const resumedIds = new Set<string>();
 
     if (options?.resumeToken !== undefined) {
       const token = options.resumeToken;
@@ -232,7 +234,9 @@ export class GoogleMapsProvider implements IBrowserProvider {
             "Resume token is stale or belongs to a different query",
           );
         }
-        skipCount = decoded.yieldedCount;
+        for (const id of decoded.yieldedIds) {
+          resumedIds.add(id);
+        }
       }
     }
 
@@ -253,7 +257,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
       if (!navResult.ok) throw navResult.error;
 
       // ── Scraping loop ──────────────────────────────────────────────────────
-      const seenPlaceIds = new Set<string>();
+      const seenPlaceIds = new Set<string>(resumedIds);
       let totalYielded = 0;
       let emptyScrolls = 0;
       let lastCardCount = 0;
@@ -292,8 +296,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
           const card = cards[i];
           if (card === undefined) continue;
 
-          // Skip cards we've already yielded in a previous session
-          if (i < skipCount) continue;
+          // Skip cards already yielded in a previous session (identity-based � handled by seenPlaceIds pre-population)
 
           // Apply inter-request delay
           if (i > 0) {
@@ -328,7 +331,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
 
           totalYielded++;
 
-          const resumeToken = buildResumeToken(totalYielded, query.queryHash);
+          const resumeToken = buildResumeToken(Array.from(seenPlaceIds), query.queryHash);
 
           const result: ProviderResult = {
             providerId: PROVIDER_ID,

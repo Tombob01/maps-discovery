@@ -8,20 +8,20 @@
  *   - Open each card's detail panel and extract all available fields
  *   - Extract the Place ID from the listing URL
  *   - Extract GPS coordinates from the URL or map state
- *   - Produce GoogleMapsRawPayload — no normalization, no transformation
+ *   - Produce GoogleMapsRawPayload â€” no normalization, no transformation
  *
  * Rules:
  *   - Returns null / undefined for any field that cannot be extracted
- *   - Never throws — all errors become null/undefined field values or
+ *   - Never throws â€” all errors become null/undefined field values or
  *     are surfaced via the Result return type on page-level operations
- *   - No business logic — extraction only
+ *   - No business logic â€” extraction only
  */
 import type { GoogleMapsRawPayload } from "./GoogleMapsRawPayload.js";
 import type { Page, ElementHandle } from "playwright";
 export declare class GoogleMapsAdapter {
     /**
      * Returns all currently-rendered result card elements in the sidebar.
-     * The list grows as the sidebar is scrolled — call this after each scroll.
+     * The list grows as the sidebar is scrolled â€” call this after each scroll.
      */
     getResultCards(page: Page): Promise<ElementHandle[]>;
     /**
