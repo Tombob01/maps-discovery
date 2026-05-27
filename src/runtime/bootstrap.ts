@@ -1,7 +1,7 @@
 /**
  * @module runtime/bootstrap
  *
- * Composition root ï¿½ assembles the full runtime container.
+ * Composition root — assembles the full runtime container.
  *
  * Call bootstrap() once at process startup. The returned container
  * exposes everything needed to handle requests and run pipelines.
@@ -13,6 +13,7 @@ import { createStorage } from "./createStorage.js";
 import { createServices } from "./createServices.js";
 import type { AssembledStorage } from "./createStorage.js";
 import type { AssembledServices } from "./createServices.js";
+import type { RuntimeFacade } from "./RuntimeFacade.js";
 
 // ---------------------------------------------------------------------------
 // Return shape
@@ -21,6 +22,8 @@ import type { AssembledServices } from "./createServices.js";
 export interface RuntimeContainer {
   readonly storage: AssembledStorage;
   readonly services: AssembledServices;
+  /** Stable public API — preferred entry point for external callers. */
+  readonly runtimeFacade: RuntimeFacade;
 }
 
 // ---------------------------------------------------------------------------
@@ -29,10 +32,10 @@ export interface RuntimeContainer {
 
 /**
  * Assembles the full runtime from environment configuration.
- * No network connections are opened ï¿½ the Postgres pool is lazy.
+ * No network connections are opened — the Postgres pool is lazy.
  */
 export function bootstrap(): RuntimeContainer {
   const storage = createStorage(env);
   const services = createServices(storage);
-  return { storage, services };
+  return { storage, services, runtimeFacade: services.runtimeFacade };
 }

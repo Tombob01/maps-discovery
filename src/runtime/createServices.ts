@@ -5,21 +5,17 @@
  *
  * Wiring order:
  *   AssembledStorage
- *   -> RunLifecycleService  (uses storage-layer IRunStore + IRecordStore)
- *   -> InMemoryRawResultStore (bridges provider output -> normalization input)
- *   -> RunCoordinator       (owns full run lifecycle execution)
- *   -> RunService           (uses RunService-layer adapters + exporters)
- *   -> DiscoveryRunner factory (createDiscoveryRunner — provider injected at call time)
- *   -> RuntimeExecutor      (orchestrates discovery + normalization end-to-end)
+ *   -> RunLifecycleService
+ *   -> InMemoryRawResultStore
+ *   -> RunCoordinator
+ *   -> RunService
+ *   -> DiscoveryRunner factory
+ *   -> RuntimeExecutor
+ *   -> RuntimeFacade  (public API — exposes only runService + runtimeExecutor)
  *
- * createServices() is a pure composition function:
- *   - No DB calls.
- *   - No singletons or globals.
- *   - Safe to call multiple times (e.g. in tests with different storage mocks).
- *
- * To execute a run end-to-end:
- *   1. services.runService.createRun(req)
- *   2. await services.runtimeExecutor.execute({ provider, runId, query })
+ * To execute a run end-to-end via the public API:
+ *   1. services.runtimeFacade.createRun(req)
+ *   2. services.runtimeFacade.executeRun({ provider, runId, query })
  */
 
 import { RunLifecycleService } from "../storage/RunLifecycleService.js";
@@ -33,6 +29,7 @@ import { BusinessNormalizer } from "../normalizer/BusinessNormalizer.js";
 import { GoogleMapsProviderMapper } from "../normalizer/GoogleMapsProviderMapper.js";
 import { DiscoveryRunner } from "./DiscoveryRunner.js";
 import { RuntimeExecutor } from "./RuntimeExecutor.js";
+import { RuntimeFacade } from "./RuntimeFacade.js";
 import type { IProvider } from "../core/interfaces/IProvider.js";
 import type { IExporter } from "../exporters/IExporter.js";
 import type { NormalizationJobPayload } from "../core/models/Job.js";
@@ -45,10 +42,10 @@ export interface AssembledServices {
   readonly normalizationQueue: IQueue<NormalizationJobPayload>;
   readonly coordinator: RunCoordinator;
   readonly runService: RunService;
-  /** Factory: inject a provider to get a ready-to-use DiscoveryRunner. */
   readonly createDiscoveryRunner: (provider: IProvider) => DiscoveryRunner;
-  /** Orchestrates discovery + normalization end-to-end for a single run. */
   readonly runtimeExecutor: RuntimeExecutor;
+  /** Public API — the only surface external callers should use. */
+  readonly runtimeFacade: RuntimeFacade;
 }
 
 export function createServices(
@@ -75,9 +72,7 @@ export function createServices(
     lifecycle,
     normalizer,
     normalizationQueue,
-    {
-      fetchRawResult: (id) => rawResultStore.fetch(id),
-    },
+    { fetchRawResult: (id) => rawResultStore.fetch(id) },
   );
 
   const noopWrite: (dest: string, content: string) => Promise<void> =
@@ -100,6 +95,8 @@ export function createServices(
 
   const runtimeExecutor = new RuntimeExecutor(createDiscoveryRunner, coordinator);
 
+  const runtimeFacade = new RuntimeFacade(runService, runtimeExecutor);
+
   return {
     lifecycle,
     rawResultStore,
@@ -108,5 +105,6 @@ export function createServices(
     runService,
     createDiscoveryRunner,
     runtimeExecutor,
+    runtimeFacade,
   };
 }
