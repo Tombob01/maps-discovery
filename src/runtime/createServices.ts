@@ -61,9 +61,7 @@ export function createServices(
     overrides.normalizationQueue ??
     new InMemoryQueue<NormalizationJobPayload>("normalization");
 
-  const normalizer = new BusinessNormalizer([
-    new GoogleMapsProviderMapper(),
-  ]);
+  const normalizer = new BusinessNormalizer([new GoogleMapsProviderMapper()]);
 
   const coordinator = new RunCoordinator(
     lifecycle,
@@ -74,8 +72,10 @@ export function createServices(
     },
   );
 
-  const noopWrite: (dest: string, content: string) => Promise<void> =
-    async () => {};
+  const noopWrite: (
+    dest: string,
+    content: string,
+  ) => Promise<void> = async () => {};
   const exporters: Map<string, IExporter> =
     overrides.exporters ??
     new Map<string, IExporter>([

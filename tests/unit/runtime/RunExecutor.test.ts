@@ -16,12 +16,18 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createServices } from "../../../src/runtime/createServices.js";
 import { InMemoryQueue } from "../../../src/queue/InMemoryQueue.js";
-import type { NormalizationJobPayload, Run } from "../../../src/core/models/Job.js";
+import type {
+  NormalizationJobPayload,
+  Run,
+} from "../../../src/core/models/Job.js";
 import type { BusinessRecord } from "../../../src/core/models/BusinessRecord.js";
 import type { IRunStore } from "../../../src/storage/IRunStore.js";
 import type { IRecordStore } from "../../../src/storage/IRecordStore.js";
 import type { AssembledStorage } from "../../../src/runtime/createStorage.js";
-import type { RunServiceRunStore, RunServiceRecordStore } from "../../../src/storage/PostgresRunServiceAdapter.js";
+import type {
+  RunServiceRunStore,
+  RunServiceRecordStore,
+} from "../../../src/storage/PostgresRunServiceAdapter.js";
 import type { ProviderResult } from "../../../src/core/models/ProviderResult.js";
 import type { RunID } from "../../../src/core/types/common.js";
 
@@ -69,8 +75,12 @@ class InMemoryRecordStore implements IRecordStore {
 // Minimal RunServiceRunStore double (satisfies RunService constructor)
 class InMemoryRunServiceStore implements RunServiceRunStore {
   constructor(private readonly base: InMemoryRunStore) {}
-  async create(run: Run): Promise<void> { return this.base.create(run); }
-  async findById(id: string): Promise<Run | null> { return this.base.getById(id); }
+  async create(run: Run): Promise<void> {
+    return this.base.create(run);
+  }
+  async findById(id: string): Promise<Run | null> {
+    return this.base.getById(id);
+  }
   async list(): Promise<Run[]> {
     const runs = await this.base.list();
     return runs as Run[];
@@ -83,7 +93,11 @@ class InMemoryRecordServiceStore implements RunServiceRecordStore {
   async findByRunId(runId: string): Promise<BusinessRecord[]> {
     return this.base.getByRunId(runId) as Promise<BusinessRecord[]>;
   }
-  async list(req: { runId?: string; page?: number; pageSize?: number }): Promise<{ items: BusinessRecord[]; total: number }> {
+  async list(req: {
+    runId?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ items: BusinessRecord[]; total: number }> {
     const all = req.runId ? await this.base.getByRunId(req.runId) : [];
     return { items: all as BusinessRecord[], total: all.length };
   }
@@ -97,7 +111,7 @@ function makeStorage(
   runStore: InMemoryRunStore,
   recordStore: InMemoryRecordStore,
 ): AssembledStorage {
-  // PostgresClient is unused in tests — cast unknown satisfies the type
+  // PostgresClient is unused in tests ï¿½ cast unknown satisfies the type
   const client = {} as AssembledStorage["client"];
   return {
     client,
@@ -108,9 +122,11 @@ function makeStorage(
   };
 }
 
-function makeProviderResult(overrides: Partial<ProviderResult> = {}): ProviderResult {
+function makeProviderResult(
+  overrides: Partial<ProviderResult> = {},
+): ProviderResult {
   return {
-    providerResultId: `pr-${Math.random().toString(36).slice(2, 8)}`, 
+    providerResultId: `pr-${Math.random().toString(36).slice(2, 8)}`,
     providerId: "google-maps",
     runId: "run-test" as RunID,
     queryId: "q-1" as import("../../../src/core/types/common.js").QueryID,
@@ -129,7 +145,11 @@ function makeProviderResult(overrides: Partial<ProviderResult> = {}): ProviderRe
     },
     collectedAt: new Date("2025-01-01T00:00:00Z"),
     sourceUrl: "https://maps.google.com/test",
-    resumeToken: { strategy: "offset", pageRequest: { kind: "offset", page: 1, pageSize: 20 }, createdAt: 0 },
+    resumeToken: {
+      strategy: "offset",
+      pageRequest: { kind: "offset", page: 1, pageSize: 20 },
+      createdAt: 0,
+    },
     ...overrides,
   };
 }
@@ -138,7 +158,7 @@ function makeProviderResult(overrides: Partial<ProviderResult> = {}): ProviderRe
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("runtime execution path — createServices() + coordinator.execute()", () => {
+describe("runtime execution path ï¿½ createServices() + coordinator.execute()", () => {
   let runStore: InMemoryRunStore;
   let recordStore: InMemoryRecordStore;
   let queue: InMemoryQueue<NormalizationJobPayload>;
@@ -151,7 +171,9 @@ describe("runtime execution path — createServices() + coordinator.execute()", ()
 
   it("creates services without throwing", () => {
     const storage = makeStorage(runStore, recordStore);
-    expect(() => createServices(storage, { normalizationQueue: queue })).not.toThrow();
+    expect(() =>
+      createServices(storage, { normalizationQueue: queue }),
+    ).not.toThrow();
   });
 
   it("exposes coordinator, rawResultStore, normalizationQueue on AssembledServices", () => {
@@ -186,11 +208,12 @@ describe("runtime execution path — createServices() + coordinator.execute()", ()
     await services.normalizationQueue.enqueue({
       runId,
       queryId: "q-1" as import("../../../src/core/types/common.js").QueryID,
-      rawResultId: rawResult.providerResultId as import("../../../src/core/types/common.js").UUID,
+      rawResultId:
+        rawResult.providerResultId as import("../../../src/core/types/common.js").UUID,
       providerId: "google-maps",
     });
 
-    // 4. Execute — drains queue, persists records, completes run
+    // 4. Execute ï¿½ drains queue, persists records, completes run
     const stats = await services.coordinator.execute(runId);
 
     // 5. Run should be complete
@@ -215,7 +238,7 @@ describe("runtime execution path — createServices() + coordinator.execute()", ()
     if (!createResult.ok) return;
     const runId = createResult.data.id as RunID;
 
-    // No jobs enqueued — drain immediately stops
+    // No jobs enqueued ï¿½ drain immediately stops
     const stats = await services.coordinator.execute(runId);
 
     const finalRun = await runStore.getById(runId);
@@ -238,12 +261,14 @@ describe("runtime execution path — createServices() + coordinator.execute()", ()
     // Enqueue a job pointing at a non-existent raw result
     await services.normalizationQueue.enqueue({
       runId,
-      queryId: "q-missing" as import("../../../src/core/types/common.js").QueryID,
-      rawResultId: "does-not-exist" as import("../../../src/core/types/common.js").UUID,
+      queryId:
+        "q-missing" as import("../../../src/core/types/common.js").QueryID,
+      rawResultId:
+        "does-not-exist" as import("../../../src/core/types/common.js").UUID,
       providerId: "google-maps",
     });
 
-    // Should not throw — NormalizationStage skips missing raw results
+    // Should not throw ï¿½ NormalizationStage skips missing raw results
     const stats = await services.coordinator.execute(runId);
 
     const finalRun = await runStore.getById(runId);
@@ -265,4 +290,3 @@ describe("runtime execution path — createServices() + coordinator.execute()", ()
     expect(services.rawResultStore.size).toBe(0);
   });
 });
-
