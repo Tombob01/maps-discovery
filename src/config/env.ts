@@ -122,7 +122,9 @@ const EnvSchema = zObject({
   LOG_STACK_TRACES: booleanString.default(true as unknown as never),
 
   // ── Export ───────────────────────────────────────────────────────────────
-  EXPORT_OUTPUT_DIR: nonEmptyString.default("./data/exports"),
+  
+  // -- AI -------------------------------------------------------------------
+  GROQ_API_KEY: nonEmptyString.optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -200,8 +202,11 @@ export interface AppConfig {
     readonly stackTraces: boolean;
   };
 
-  readonly export: {
-    readonly outputDir: string;
+
+  readonly ai: {
+    readonly groq: {
+      readonly apiKey: string | undefined;
+    };
   };
 }
 
@@ -286,8 +291,11 @@ function buildConfig(parsed: ParsedEnv): AppConfig {
       stackTraces: parsed.LOG_STACK_TRACES,
     },
 
-    export: {
-      outputDir: resolve(root, parsed.EXPORT_OUTPUT_DIR),
+
+    ai: {
+      groq: {
+        apiKey: parsed.GROQ_API_KEY,
+      },
     },
   };
 }

@@ -36,6 +36,7 @@ export interface RuntimeContainer {
  */
 export function bootstrap(): RuntimeContainer {
   const storage = createStorage(env);
-  const services = createServices(storage);
+  const apiKey = env.ai.groq.apiKey;
+  const services = createServices(storage, apiKey !== undefined ? { groqApiKey: apiKey } : {});
   return { storage, services, runtimeFacade: services.runtimeFacade };
 }

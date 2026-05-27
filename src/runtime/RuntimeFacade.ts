@@ -1,14 +1,7 @@
 /**
  * @module runtime/RuntimeFacade
  *
- * Stable public API for the runtime.
- *
- * Delegates to internal services without exposing them.
- * External callers interact only with this facade — they never
- * touch queues, stores, coordinator, lifecycle, or discoveryRunner.
- *
- * RuntimeFacade is stateless: it holds no mutable state and is safe
- * to call concurrently from multiple callers.
+ * Stable public API for the runtime. Delegates only — no logic.
  */
 
 import type { IProvider, DiscoveryOptions } from "../core/interfaces/IProvider.js";
@@ -17,11 +10,11 @@ import type { RunID } from "../core/types/common.js";
 import type { RunStats } from "../core/models/Job.js";
 import type { RunService } from "../api/RunService.js";
 import type { RuntimeExecutor, ExecutionSummary } from "./RuntimeExecutor.js";
+import type { KeywordExpansionService, ExpansionResponse } from "../ai/KeywordExpansionService.js";
 import type { CreateRunRequest, RecordListRequest } from "../api/types.js";
 
-// ---------------------------------------------------------------------------
-// Public output types
-// ---------------------------------------------------------------------------
+export type { ExpansionResponse };
+export type { ExpandedKeyword } from "../ai/IKeywordExpansionProvider.js";
 
 export interface CreateRunResult {
   readonly runId: string;
@@ -63,42 +56,37 @@ export interface ExecuteRunOptions {
   readonly discoveryOptions?: DiscoveryOptions;
 }
 
-// ---------------------------------------------------------------------------
-// RuntimeFacade
-// ---------------------------------------------------------------------------
+export interface ExpandKeywordOptions {
+  readonly keyword: string;
+  readonly location?: string;
+  readonly limit?: number;
+}
 
 export class RuntimeFacade {
   constructor(
     private readonly runService: RunService,
     private readonly runtimeExecutor: RuntimeExecutor,
+    private readonly expansionService: KeywordExpansionService,
   ) {}
 
-  /**
-   * Creates a new run in pending state.
-   * Throws if validation fails.
-   */
-  async createRun(request: CreateRunRequest): Promise<CreateRunResult> {
-    const result = await this.runService.createRun(request);
-    if (!result.ok) {
-      throw new Error(result.error.message);
-    }
-    return {
-      runId: result.data.id,
-      status: result.data.status,
+  async expandKeyword(opts: ExpandKeywordOptions): Promise<ExpansionResponse> {
+    const expansionOpts = {
+      ...(opts.location !== undefined ? { location: opts.location } : {}),
+      ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
     };
+    return this.expansionService.expand(opts.keyword, expansionOpts);
   }
 
-  /**
-   * Executes discovery + normalization for a run end-to-end.
-   * Propagates errors unchanged.
-   */
+  async createRun(request: CreateRunRequest): Promise<CreateRunResult> {
+    const result = await this.runService.createRun(request);
+    if (!result.ok) throw new Error(result.error.message);
+    return { runId: result.data.id, status: result.data.status };
+  }
+
   async executeRun(opts: ExecuteRunOptions): Promise<ExecutionSummary> {
     return this.runtimeExecutor.execute(opts);
   }
 
-  /**
-   * Returns a run by ID, or null if not found.
-   */
   async getRun(runId: string): Promise<RunView | null> {
     const result = await this.runService.getRun(runId);
     if (!result.ok) {
@@ -108,19 +96,10 @@ export class RuntimeFacade {
     return result.data;
   }
 
-  /**
-   * Lists normalized records for a run with optional pagination.
-   */
-  async listRecords(
-    runId: string,
-    page = 1,
-    pageSize = 20,
-  ): Promise<RecordPage> {
+  async listRecords(runId: string, page = 1, pageSize = 20): Promise<RecordPage> {
     const req: RecordListRequest = { runId, page, pageSize };
     const result = await this.runService.listRecords(req);
-    if (!result.ok) {
-      throw new Error(result.error.message);
-    }
+    if (!result.ok) throw new Error(result.error.message);
     return {
       items: result.data.items,
       total: result.data.total,

@@ -1,21 +1,5 @@
 /**
  * @module runtime/createServices
- *
- * Assembles application services from storage dependencies.
- *
- * Wiring order:
- *   AssembledStorage
- *   -> RunLifecycleService
- *   -> InMemoryRawResultStore
- *   -> RunCoordinator
- *   -> RunService
- *   -> DiscoveryRunner factory
- *   -> RuntimeExecutor
- *   -> RuntimeFacade  (public API — exposes only runService + runtimeExecutor)
- *
- * To execute a run end-to-end via the public API:
- *   1. services.runtimeFacade.createRun(req)
- *   2. services.runtimeFacade.executeRun({ provider, runId, query })
  */
 
 import { RunLifecycleService } from "../storage/RunLifecycleService.js";
@@ -30,11 +14,15 @@ import { GoogleMapsProviderMapper } from "../normalizer/GoogleMapsProviderMapper
 import { DiscoveryRunner } from "./DiscoveryRunner.js";
 import { RuntimeExecutor } from "./RuntimeExecutor.js";
 import { RuntimeFacade } from "./RuntimeFacade.js";
+import { KeywordExpansionService } from "../ai/KeywordExpansionService.js";
+import { GroqKeywordExpansionProvider } from "../ai/GroqKeywordExpansionProvider.js";
+import { NoopKeywordExpansionProvider } from "../ai/NoopKeywordExpansionProvider.js";
 import type { IProvider } from "../core/interfaces/IProvider.js";
 import type { IExporter } from "../exporters/IExporter.js";
 import type { NormalizationJobPayload } from "../core/models/Job.js";
 import type { IQueue } from "../queue/IQueue.js";
 import type { AssembledStorage } from "./createStorage.js";
+import type { IKeywordExpansionProvider } from "../ai/IKeywordExpansionProvider.js";
 
 export interface AssembledServices {
   readonly lifecycle: RunLifecycleService;
@@ -44,7 +32,7 @@ export interface AssembledServices {
   readonly runService: RunService;
   readonly createDiscoveryRunner: (provider: IProvider) => DiscoveryRunner;
   readonly runtimeExecutor: RuntimeExecutor;
-  /** Public API — the only surface external callers should use. */
+  readonly expansionService: KeywordExpansionService;
   readonly runtimeFacade: RuntimeFacade;
 }
 
@@ -53,58 +41,42 @@ export function createServices(
   overrides: {
     exporters?: Map<string, IExporter>;
     normalizationQueue?: IQueue<NormalizationJobPayload>;
+    expansionProvider?: IKeywordExpansionProvider;
+    groqApiKey?: string;
   } = {},
 ): AssembledServices {
-  const lifecycle = new RunLifecycleService(
-    storage.runStore,
-    storage.recordStore,
-  );
-
+  const lifecycle = new RunLifecycleService(storage.runStore, storage.recordStore);
   const rawResultStore = new InMemoryRawResultStore();
-
   const normalizationQueue: IQueue<NormalizationJobPayload> =
-    overrides.normalizationQueue ??
-    new InMemoryQueue<NormalizationJobPayload>("normalization");
-
+    overrides.normalizationQueue ?? new InMemoryQueue<NormalizationJobPayload>("normalization");
   const normalizer = new BusinessNormalizer([new GoogleMapsProviderMapper()]);
-
-  const coordinator = new RunCoordinator(
-    lifecycle,
-    normalizer,
-    normalizationQueue,
-    { fetchRawResult: (id) => rawResultStore.fetch(id) },
-  );
-
-  const noopWrite: (dest: string, content: string) => Promise<void> =
-    async () => {};
+  const coordinator = new RunCoordinator(lifecycle, normalizer, normalizationQueue, {
+    fetchRawResult: (id) => rawResultStore.fetch(id),
+  });
+  const noopWrite: (dest: string, content: string) => Promise<void> = async () => {};
   const exporters: Map<string, IExporter> =
     overrides.exporters ??
     new Map<string, IExporter>([
       ["jsonl", new JsonLinesExporter(noopWrite)],
       ["csv", new CsvExporter(noopWrite)],
     ]);
-
-  const runService = new RunService(
-    storage.runServiceStore,
-    storage.recordServiceStore,
-    exporters,
-  );
-
+  const runService = new RunService(storage.runServiceStore, storage.recordServiceStore, exporters);
   const createDiscoveryRunner = (provider: IProvider): DiscoveryRunner =>
     new DiscoveryRunner(provider, rawResultStore, normalizationQueue);
-
   const runtimeExecutor = new RuntimeExecutor(createDiscoveryRunner, coordinator);
 
-  const runtimeFacade = new RuntimeFacade(runService, runtimeExecutor);
+  const expansionProvider: IKeywordExpansionProvider =
+    overrides.expansionProvider ??
+    (overrides.groqApiKey
+      ? new GroqKeywordExpansionProvider(overrides.groqApiKey)
+      : new NoopKeywordExpansionProvider());
+
+  const expansionService = new KeywordExpansionService(expansionProvider);
+  const runtimeFacade = new RuntimeFacade(runService, runtimeExecutor, expansionService);
 
   return {
-    lifecycle,
-    rawResultStore,
-    normalizationQueue,
-    coordinator,
-    runService,
-    createDiscoveryRunner,
-    runtimeExecutor,
-    runtimeFacade,
+    lifecycle, rawResultStore, normalizationQueue, coordinator,
+    runService, createDiscoveryRunner, runtimeExecutor,
+    expansionService, runtimeFacade,
   };
 }
