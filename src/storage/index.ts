@@ -23,3 +23,5 @@ export type {
   RunServiceRecordStore,
   RecordListRequest,
 } from "./PostgresRunServiceAdapter.js";
+
+export { InMemoryRawResultStore } from "./InMemoryRawResultStore.js";
