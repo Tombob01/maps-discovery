@@ -13,6 +13,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { RuntimeFacade } from "../runtime/RuntimeFacade.js";
+import type { IProvider } from "../core/interfaces/IProvider.js";
 
 // ---------------------------------------------------------------------------
 // Request body shapes expected from the frontend
@@ -43,7 +44,15 @@ interface ExecuteRunBody {
 // Factory
 // ---------------------------------------------------------------------------
 
-export function createServer(facade: RuntimeFacade): Hono {
+/**
+ * @param facade        - The RuntimeFacade (public API surface).
+ * @param googleMapsProvider - Optional real GoogleMapsProvider injected by serve.ts.
+ *   When absent (tests, no Playwright), the mock provider is used as fallback.
+ */
+export function createServer(
+  facade: RuntimeFacade,
+  googleMapsProvider?: IProvider,
+): Hono {
   const app = new Hono();
 
   // Allow the Vite dev server (port 5173) to call this API (port 3001)
@@ -133,11 +142,17 @@ export function createServer(facade: RuntimeFacade): Hono {
       return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "seed.location is required" } }, 400);
     }
 
-    const mockProvider = buildMockProvider(body.provider ?? "mock");
+    // Use the real GoogleMapsProvider when the frontend requests it and one
+    // was injected at startup. Fall back to the mock for any other provider
+    // ID or when no real provider is available (tests, CI).
+    const provider: IProvider =
+      body.provider === "google-maps" && googleMapsProvider !== undefined
+        ? googleMapsProvider
+        : buildMockProvider(body.provider ?? "mock");
 
     try {
       const summary = await facade.executeFromSeed({
-        provider: mockProvider,
+        provider: provider,
         runId: runId as import("../core/types/common.js").RunID,
         keyword: body.seed.keyword.trim(),
         location: body.seed.location.trim(),
