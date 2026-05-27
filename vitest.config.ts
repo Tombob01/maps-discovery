@@ -1,6 +1,5 @@
 import { defineConfig } from "vitest/config";
 import { resolve }      from "node:path";
-
 export default defineConfig({
   test: {
     globals:     true,
@@ -41,11 +40,6 @@ export default defineConfig({
       "@storage":      resolve(__dirname, "src/storage"),
       "@exporters":    resolve(__dirname, "src/exporters"),
       "@normalizer":   resolve(__dirname, "src/normalizer"),
-      "/src/":         resolve(__dirname, "dist") + "/",
-      "../src/":       resolve(__dirname, "dist") + "/",
-      "../../src/":    resolve(__dirname, "dist") + "/",
-      "../../../src/": resolve(__dirname, "dist") + "/",
-      "../../../../src/": resolve(__dirname, "dist") + "/",
     },
   },
 });
