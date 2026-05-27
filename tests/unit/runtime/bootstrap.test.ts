@@ -90,7 +90,7 @@ describe("createServices()", () => {
   it("accepts custom exporters map", () => {
     const storage = createStorage(TEST_CONFIG);
     const exporters = new Map();
-    const { runService } = createServices(storage, exporters);
+    const { runService } = createServices(storage, { exporters });
     expect(runService).toBeInstanceOf(RunService);
   });
 });

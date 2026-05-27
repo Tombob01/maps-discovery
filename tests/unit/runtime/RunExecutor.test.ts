@@ -130,6 +130,7 @@ function makeProviderResult(overrides: Partial<ProviderResult> = {}): ProviderRe
     },
     collectedAt: new Date("2025-01-01T00:00:00Z"),
     sourceUrl: "https://maps.google.com/test",
+    resumeToken: null,
     ...overrides,
   };
 }
