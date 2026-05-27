@@ -1,10 +1,10 @@
-﻿/**
+/**
  * tests/unit/storage/adapters.test.ts
  *
  * Tests for PostgresRunServiceAdapter and PostgresRecordServiceAdapter,
- * plus the end-to-end wiring of NormalizationStage â†’ RunLifecycleService.
+ * plus the end-to-end wiring of NormalizationStage → RunLifecycleService.
  *
- * No real DB â€” all storage backed by in-memory stubs.
+ * No real DB — all storage backed by in-memory stubs.
  *
  * Covers:
  *   PostgresRunServiceAdapter
@@ -26,7 +26,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   PostgresRunServiceAdapter,
   PostgresRecordServiceAdapter,
-} from "../../../src/storage/PostgresRunServiceAdapter.js";
+} from "../../../src/storage/index.js";
 import { RunLifecycleService } from "../../../src/storage/RunLifecycleService.js";
 import { NormalizationStage } from "../../../src/pipeline/NormalizationStage.js";
 import type { IRunStore } from "../../../src/storage/IRunStore.js";
@@ -287,10 +287,10 @@ describe("PostgresRecordServiceAdapter", () => {
 });
 
 // ---------------------------------------------------------------------------
-// End-to-end: NormalizationStage â†’ RunLifecycleService wiring
+// End-to-end: NormalizationStage → RunLifecycleService wiring
 // ---------------------------------------------------------------------------
 
-describe("NormalizationStage + RunLifecycleService â€” end-to-end write path", () => {
+describe("NormalizationStage + RunLifecycleService — end-to-end write path", () => {
   it("onSuccess persists record and increments recordsNormalized", async () => {
     const runStore = new StubRunStore();
     const recordStore = new StubRecordStore();
