@@ -1,4 +1,4 @@
-ï»¿/**
+/**
  * @module runtime/createServices
  *
  * Assembles application services from storage dependencies.
@@ -9,6 +9,7 @@
  *   -> InMemoryRawResultStore (bridges provider output -> normalization input)
  *   -> RunCoordinator       (owns full run lifecycle execution)
  *   -> RunService           (uses RunService-layer adapters + exporters)
+ *   -> DiscoveryRunner factory (createDiscoveryRunner — provider injected at call time)
  *
  * createServices() is a pure composition function:
  *   - No DB calls.
@@ -17,8 +18,9 @@
  *
  * To execute a run end-to-end:
  *   1. services.runService.createRun(req)        -> persists pending Run
- *   2. enqueue NormalizationJobPayloads onto services.normalizationQueue
- *   3. services.coordinator.execute(runId)        -> drains queue, persists records
+ *   2. const runner = services.createDiscoveryRunner(provider)
+ *   3. await runner.run(query)                   -> fills rawResultStore + normalizationQueue
+ *   4. services.coordinator.execute(runId)        -> drains queue, persists records
  */
 
 import { RunLifecycleService } from "../storage/RunLifecycleService.js";
@@ -30,6 +32,8 @@ import { JsonLinesExporter } from "../exporters/JsonLinesExporter.js";
 import { CsvExporter } from "../exporters/CsvExporter.js";
 import { BusinessNormalizer } from "../normalizer/BusinessNormalizer.js";
 import { GoogleMapsProviderMapper } from "../normalizer/GoogleMapsProviderMapper.js";
+import { DiscoveryRunner } from "./DiscoveryRunner.js";
+import type { IProvider } from "../core/interfaces/IProvider.js";
 import type { IExporter } from "../exporters/IExporter.js";
 import type { NormalizationJobPayload } from "../core/models/Job.js";
 import type { IQueue } from "../queue/IQueue.js";
@@ -41,6 +45,8 @@ export interface AssembledServices {
   readonly normalizationQueue: IQueue<NormalizationJobPayload>;
   readonly coordinator: RunCoordinator;
   readonly runService: RunService;
+  /** Factory: inject a provider to get a ready-to-use DiscoveryRunner. */
+  readonly createDiscoveryRunner: (provider: IProvider) => DiscoveryRunner;
 }
 
 export function createServices(
@@ -72,10 +78,8 @@ export function createServices(
     },
   );
 
-  const noopWrite: (
-    dest: string,
-    content: string,
-  ) => Promise<void> = async () => {};
+  const noopWrite: (dest: string, content: string) => Promise<void> =
+    async () => {};
   const exporters: Map<string, IExporter> =
     overrides.exporters ??
     new Map<string, IExporter>([
@@ -89,11 +93,15 @@ export function createServices(
     exporters,
   );
 
+  const createDiscoveryRunner = (provider: IProvider): DiscoveryRunner =>
+    new DiscoveryRunner(provider, rawResultStore, normalizationQueue);
+
   return {
     lifecycle,
     rawResultStore,
     normalizationQueue,
     coordinator,
     runService,
+    createDiscoveryRunner,
   };
 }
