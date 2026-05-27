@@ -5,7 +5,7 @@
  *
  * POST /api/expand            → facade.expandKeyword()
  * POST /api/runs              → facade.createRun()
- * POST /api/runs/:id/execute  → facade.executeRun()  [mock provider — real provider TBD]
+ * POST /api/runs/:id/execute  → facade.executeFromSeed()
  * GET  /api/runs/:id          → facade.getRun()
  * GET  /api/runs/:id/records  → facade.listRecords()
  */
@@ -32,10 +32,9 @@ interface CreateRunBody {
 interface ExecuteRunBody {
   /** Provider ID string — resolved to a mock/real provider server-side */
   provider: string;
-  /** Serialized ResolvedQuery fields the frontend sends */
-  query: {
-    rawText: string;
-    niche: string;
+  /** Seed fields the frontend sends — no pre-built ResolvedQuery needed */
+  seed: {
+    keyword: string;
     location: string;
   };
 }
@@ -113,10 +112,9 @@ export function createServer(facade: RuntimeFacade): Hono {
   // --------------------------------------------------------------------------
   // POST /api/runs/:id/execute
   //
-  // The frontend cannot send a live IProvider object over HTTP.
-  // This route accepts a provider ID string and a serialized query.
-  // The mock provider is used for now; wiring a real Playwright provider
-  // is Milestone B (see open TODOs).
+  // Accepts a provider ID string + seed { keyword, location }.
+  // The facade resolves the seed into a ResolvedQuery via QueryEngine.
+  // The mock provider is used until Milestone C wires GoogleMapsProvider.
   // --------------------------------------------------------------------------
   app.post("/api/runs/:id/execute", async (c) => {
     const runId = c.req.param("id");
@@ -128,22 +126,21 @@ export function createServer(facade: RuntimeFacade): Hono {
       return c.json({ ok: false, error: { code: "INVALID_JSON", message: "Request body must be JSON" } }, 400);
     }
 
-    if (!body.query?.rawText?.trim()) {
-      return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "query.rawText is required" } }, 400);
+    if (!body.seed?.keyword?.trim()) {
+      return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "seed.keyword is required" } }, 400);
+    }
+    if (!body.seed?.location?.trim()) {
+      return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "seed.location is required" } }, 400);
     }
 
-    // Build a minimal mock provider so the existing RuntimeFacade/RuntimeExecutor
-    // chain works end-to-end. The real GoogleMapsProvider is wired in Milestone B.
     const mockProvider = buildMockProvider(body.provider ?? "mock");
 
-    // Build a minimal ResolvedQuery from the serialized fields
-    const query = buildResolvedQuery(runId, body.query, body.provider ?? "mock");
-
     try {
-      const summary = await facade.executeRun({
+      const summary = await facade.executeFromSeed({
         provider: mockProvider,
         runId: runId as import("../core/types/common.js").RunID,
-        query,
+        keyword: body.seed.keyword.trim(),
+        location: body.seed.location.trim(),
       });
       return c.json({ ok: true, data: summary });
     } catch (err) {
@@ -196,9 +193,7 @@ export function createServer(facade: RuntimeFacade): Hono {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers: minimal stubs for the execute route
-// These exist only to satisfy the RuntimeExecutor/DiscoveryRunner interface.
-// They are replaced when a real provider is wired (Milestone B).
+// Helpers
 // ---------------------------------------------------------------------------
 
 function buildMockProvider(id: string): import("../core/interfaces/IProvider.js").IProvider {
@@ -243,36 +238,6 @@ function buildMockProvider(id: string): import("../core/interfaces/IProvider.js"
     shutdown: async () => {},
     discover: async function* () {
       // Yields nothing — normalization stage will process an empty set
-    },
-  };
-}
-
-function buildResolvedQuery(
-  runId: string,
-  q: ExecuteRunBody["query"],
-  providerId: string,
-): import("../core/models/Query.js").ResolvedQuery {
-  const now = new Date();
-  return {
-    id: `qry-${Date.now()}` as import("../core/types/common.js").QueryID,
-    runId: runId as import("../core/types/common.js").RunID,
-    parentId: null,
-    rawText: q.rawText.trim(),
-    niche: q.niche?.trim() ?? q.rawText.trim(),
-    geoTarget: {
-      displayName: q.location?.trim() ?? "",
-      country: q.location?.trim() ?? "",
-    },
-    providerId,
-    generatedByStrategies: ["seed"],
-    queryHash: `hash-${Date.now()}` as import("../core/types/common.js").QueryHash,
-    lifecycleState: "generated",
-    status: "pending",
-    createdAt: now,
-    resolvedGeoTarget: {
-      displayName: q.location?.trim() ?? "",
-      country: q.location?.trim() ?? "",
-      resolvedCoordinates: { lat: 0, lng: 0 },
     },
   };
 }

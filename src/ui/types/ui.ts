@@ -26,13 +26,11 @@ export interface CreateRunResult {
   runId: string;
 }
 
-/** Minimal resolved query shape the UI passes to executeRun.
- *  The real backend expects a fuller ResolvedQuery — extend this
- *  when the HTTP adapter is wired. */
+/** Minimal seed shape the UI passes to executeRun.
+ *  The backend resolves niche + location into a ResolvedQuery via QueryEngine. */
 export interface UIResolvedQuery {
   niche: string;
   location: string;
-  keywords: string[];
 }
 
 export interface ExecuteRunParams {

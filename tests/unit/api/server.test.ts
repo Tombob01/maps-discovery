@@ -34,6 +34,19 @@ function makeMockFacade(): RuntimeFacade {
         errors: 0,
       },
     }),
+    executeFromSeed: vi.fn().mockResolvedValue({
+      discovery: { resultsSaved: 0, jobsEnqueued: 0 },
+      normalization: {
+        queriesGenerated: 0,
+        queriesDispatched: 0,
+        rawResultsFound: 0,
+        recordsNormalized: 0,
+        recordsUnique: 0,
+        recordsDuplicate: 0,
+        recordsExported: 0,
+        errors: 0,
+      },
+    }),
     getRun: vi.fn().mockResolvedValue({
       id: "run-test-001",
       status: "complete",
@@ -230,20 +243,51 @@ describe("POST /api/runs/:id/execute", () => {
     const app = createServer(facade);
     const res = await request(app, "POST", "/api/runs/run-test-001/execute", {
       provider: "mock",
-      query: { rawText: "plumbers Austin TX", niche: "plumber", location: "Austin TX" },
+      seed: { keyword: "plumbers", location: "Austin TX" },
     });
     const body = await res.json() as { ok: boolean; data: unknown };
 
     expect(res.status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(facade.executeRun).toHaveBeenCalled();
+    expect(facade.executeFromSeed).toHaveBeenCalled();
   });
 
-  it("returns 400 when query.rawText is missing", async () => {
+  it("passes keyword and location to executeFromSeed", async () => {
+    const app = createServer(facade);
+    await request(app, "POST", "/api/runs/run-abc/execute", {
+      provider: "google-maps",
+      seed: { keyword: "dentists", location: "Lagos, Nigeria" },
+    });
+    expect(facade.executeFromSeed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        keyword: "dentists",
+        location: "Lagos, Nigeria",
+      }),
+    );
+  });
+
+  it("returns 400 when seed.keyword is missing", async () => {
     const app = createServer(facade);
     const res = await request(app, "POST", "/api/runs/run-001/execute", {
       provider: "mock",
-      query: { niche: "plumber", location: "Austin TX" },
+      seed: { location: "Austin TX" },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when seed.location is missing", async () => {
+    const app = createServer(facade);
+    const res = await request(app, "POST", "/api/runs/run-001/execute", {
+      provider: "mock",
+      seed: { keyword: "plumbers" },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when seed is missing entirely", async () => {
+    const app = createServer(facade);
+    const res = await request(app, "POST", "/api/runs/run-001/execute", {
+      provider: "mock",
     });
     expect(res.status).toBe(400);
   });

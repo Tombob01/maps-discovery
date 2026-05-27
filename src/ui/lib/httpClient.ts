@@ -223,9 +223,8 @@ export const httpClient: IRuntimeFacade = {
         method: 'POST',
         body: JSON.stringify({
           provider: params.provider,
-          query: {
-            rawText: params.query.keywords?.join(', ') ?? params.query.niche,
-            niche: params.query.niche,
+          seed: {
+            keyword: params.query.niche,
             location: params.query.location,
           },
         }),

@@ -191,7 +191,6 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
           query: {
             niche: state.keyword,
             location: state.location,
-            keywords: state.selectedKeywords,
           },
         });
       })
