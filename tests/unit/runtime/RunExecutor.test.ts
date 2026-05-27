@@ -16,8 +16,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createServices } from "../../../src/runtime/createServices.js";
 import { InMemoryQueue } from "../../../src/queue/InMemoryQueue.js";
-import type { NormalizationJobPayload } from "../../../src/core/models/Job.js";
-import type { Run } from "../../../src/core/models/Job.js";
+import type { NormalizationJobPayload, Run } from "../../../src/core/models/Job.js";
 import type { BusinessRecord } from "../../../src/core/models/BusinessRecord.js";
 import type { IRunStore } from "../../../src/storage/IRunStore.js";
 import type { IRecordStore } from "../../../src/storage/IRecordStore.js";
