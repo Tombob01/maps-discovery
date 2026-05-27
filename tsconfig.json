@@ -1,49 +1,77 @@
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM"],
-    "types": ["node"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "strict": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "strictBindCallApply": true,
-    "strictPropertyInitialization": true,
-    "noImplicitThis": true,
-    "useUnknownInCatchVariables": true,
-    "alwaysStrict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "exactOptionalPropertyTypes": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "forceConsistentCasingInFileNames": true,
-    "esModuleInterop": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": true,
-    "baseUrl": ".",
-    "paths": {
-      "@core/*": ["src/core/*"],
-      "@query-engine/*": ["src/query-engine/*"],
-      "@providers/*": ["src/providers/*"],
-      "@pipeline/*": ["src/pipeline/*"],
-      "@queue/*": ["src/queue/*"],
-      "@storage/*": ["src/storage/*"],
-      "@exporters/*": ["src/exporters/*"],
-      "@normalizer/*": ["src/normalizer/*"]
-    },
-    "ignoreDeprecations": "5.0",
-    "skipLibCheck": true
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "tests/**/*.ts"]
+﻿{
+    "compilerOptions":  {
+                            "target":  "ES2022",
+                            "lib":  [
+                                        "ES2022",
+                                        "DOM"
+                                    ],
+                            "types":  [
+                                          "node"
+                                      ],
+                            "module":  "NodeNext",
+                            "moduleResolution":  "NodeNext",
+                            "outDir":  "./dist",
+                            "rootDir":  "./src",
+                            "declaration":  true,
+                            "declarationMap":  true,
+                            "sourceMap":  true,
+                            "strict":  true,
+                            "noImplicitAny":  true,
+                            "strictNullChecks":  true,
+                            "strictFunctionTypes":  true,
+                            "strictBindCallApply":  true,
+                            "strictPropertyInitialization":  true,
+                            "noImplicitThis":  true,
+                            "useUnknownInCatchVariables":  true,
+                            "alwaysStrict":  true,
+                            "noUnusedLocals":  true,
+                            "noUnusedParameters":  true,
+                            "exactOptionalPropertyTypes":  true,
+                            "noImplicitReturns":  true,
+                            "noFallthroughCasesInSwitch":  true,
+                            "noUncheckedIndexedAccess":  true,
+                            "noImplicitOverride":  true,
+                            "forceConsistentCasingInFileNames":  true,
+                            "esModuleInterop":  true,
+                            "isolatedModules":  true,
+                            "verbatimModuleSyntax":  true,
+                            "baseUrl":  ".",
+                            "paths":  {
+                                          "@core/*":  [
+                                                          "src/core/*"
+                                                      ],
+                                          "@query-engine/*":  [
+                                                                  "src/query-engine/*"
+                                                              ],
+                                          "@providers/*":  [
+                                                               "src/providers/*"
+                                                           ],
+                                          "@pipeline/*":  [
+                                                              "src/pipeline/*"
+                                                          ],
+                                          "@queue/*":  [
+                                                           "src/queue/*"
+                                                       ],
+                                          "@storage/*":  [
+                                                             "src/storage/*"
+                                                         ],
+                                          "@exporters/*":  [
+                                                               "src/exporters/*"
+                                                           ],
+                                          "@normalizer/*":  [
+                                                                "src/normalizer/*"
+                                                            ]
+                                      },
+                            "ignoreDeprecations":  "5.0",
+                            "skipLibCheck":  true
+                        },
+    "include":  [
+                    "src/**/*.ts"
+                ],
+    "exclude":  [
+                    "node_modules",
+                    "dist",
+                    "tests/**/*.ts",
+                    "src/ui/**/*"
+                ]
 }
