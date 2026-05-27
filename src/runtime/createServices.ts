@@ -10,6 +10,7 @@
  *   -> RunCoordinator       (owns full run lifecycle execution)
  *   -> RunService           (uses RunService-layer adapters + exporters)
  *   -> DiscoveryRunner factory (createDiscoveryRunner — provider injected at call time)
+ *   -> RuntimeExecutor      (orchestrates discovery + normalization end-to-end)
  *
  * createServices() is a pure composition function:
  *   - No DB calls.
@@ -17,10 +18,8 @@
  *   - Safe to call multiple times (e.g. in tests with different storage mocks).
  *
  * To execute a run end-to-end:
- *   1. services.runService.createRun(req)        -> persists pending Run
- *   2. const runner = services.createDiscoveryRunner(provider)
- *   3. await runner.run(query)                   -> fills rawResultStore + normalizationQueue
- *   4. services.coordinator.execute(runId)        -> drains queue, persists records
+ *   1. services.runService.createRun(req)
+ *   2. await services.runtimeExecutor.execute({ provider, runId, query })
  */
 
 import { RunLifecycleService } from "../storage/RunLifecycleService.js";
@@ -33,6 +32,7 @@ import { CsvExporter } from "../exporters/CsvExporter.js";
 import { BusinessNormalizer } from "../normalizer/BusinessNormalizer.js";
 import { GoogleMapsProviderMapper } from "../normalizer/GoogleMapsProviderMapper.js";
 import { DiscoveryRunner } from "./DiscoveryRunner.js";
+import { RuntimeExecutor } from "./RuntimeExecutor.js";
 import type { IProvider } from "../core/interfaces/IProvider.js";
 import type { IExporter } from "../exporters/IExporter.js";
 import type { NormalizationJobPayload } from "../core/models/Job.js";
@@ -47,6 +47,8 @@ export interface AssembledServices {
   readonly runService: RunService;
   /** Factory: inject a provider to get a ready-to-use DiscoveryRunner. */
   readonly createDiscoveryRunner: (provider: IProvider) => DiscoveryRunner;
+  /** Orchestrates discovery + normalization end-to-end for a single run. */
+  readonly runtimeExecutor: RuntimeExecutor;
 }
 
 export function createServices(
@@ -96,6 +98,8 @@ export function createServices(
   const createDiscoveryRunner = (provider: IProvider): DiscoveryRunner =>
     new DiscoveryRunner(provider, rawResultStore, normalizationQueue);
 
+  const runtimeExecutor = new RuntimeExecutor(createDiscoveryRunner, coordinator);
+
   return {
     lifecycle,
     rawResultStore,
@@ -103,5 +107,6 @@ export function createServices(
     coordinator,
     runService,
     createDiscoveryRunner,
+    runtimeExecutor,
   };
 }
