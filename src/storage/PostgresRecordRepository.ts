@@ -215,7 +215,7 @@ export class PostgresRecordRepository implements IRecordStore {
     await this.db.query(
       `INSERT INTO businesses (${INSERT_COLUMNS})
        VALUES (${rowPlaceholders(1)})
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT (fingerprint) DO NOTHING`,
       recordToParams(record),
     );
   }
@@ -243,7 +243,7 @@ export class PostgresRecordRepository implements IRecordStore {
     await this.db.query(
       `INSERT INTO businesses (${INSERT_COLUMNS})
        VALUES ${valueClauses.join(", ")}
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT (fingerprint) DO NOTHING`,
       params,
     );
   }

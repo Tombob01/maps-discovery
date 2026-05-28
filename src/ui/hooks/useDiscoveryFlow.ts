@@ -178,6 +178,7 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
     facade
       .createRun({ niche: state.keyword, location: state.location })
       .then(({ runId }) => {
+        console.log('[startRun] createRun resolved, runId:', runId);
         addEvent(`run created: ${runId}`, 'ok');
         dispatch({ type: 'SET_RUN_ID', runId });
         dispatch({ type: 'SET_RUN_STATUS', status: 'running' });
@@ -185,6 +186,7 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
         dispatch({ type: 'SET_STEP', step: 'run' });
         addEvent('executing discovery…', 'info');
 
+        console.log('[startRun] calling executeRun, runId:', runId);
         return facade.executeRun({
           provider: 'google-maps',
           runId,
@@ -192,26 +194,20 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
             niche: state.keyword,
             location: state.location,
           },
+        }).then(summary => {
+          console.log('[startRun] executeRun resolved, resultsFound:', summary.discovery.resultsFound, 'normalized:', summary.normalization.processed);
+          addEvent(
+            `discovery done – ${summary.discovery.resultsFound} results, ` +
+            `${summary.normalization.processed} normalized`,
+            'ok',
+          );
+          dispatch({ type: 'SET_PROGRESS', progress: 70 });
+          console.log('[startRun] calling getRun, runId:', runId);
+          return facade.getRun(runId);
         });
       })
-      .then(summary => {
-        addEvent(
-          `discovery done — ${summary.discovery.resultsFound} results, ` +
-          `${summary.normalization.processed} normalized`,
-          'ok',
-        );
-        dispatch({ type: 'SET_PROGRESS', progress: 70 });
-
-        // getRun uses the runId captured in state — read via closure from reducer
-        // We need the current runId; since it was just set, we grab it from the
-        // closure inside the chain via a local variable captured above.
-        return facade.getRun(
-          // runId is guaranteed non-null here because createRun succeeded
-          // TypeScript doesn't track promise-chain ordering, so cast is safe.
-          state.runId as string,
-        );
-      })
       .then(run => {
+        console.log('[startRun] getRun resolved, status:', run.status, 'id:', run.id);
         dispatch({ type: 'SET_RUN_STATUS', status: run.status });
         dispatch({ type: 'SET_STATS', stats: run.stats });
         dispatch({ type: 'SET_PROGRESS', progress: 90 });
@@ -230,10 +226,9 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
         addEvent(`run failed: ${msg}`, 'err');
         dispatch({ type: 'SET_RUN_STATUS', status: 'failed' });
         dispatch({ type: 'SET_ERROR', error: msg });
-        // Failed run stays visible — no step reset
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facade, state.keyword, state.location, state.selectedKeywords, state.runId]);
+  }, [facade, state.keyword, state.location, state.selectedKeywords]);
 
   return {
     state,
