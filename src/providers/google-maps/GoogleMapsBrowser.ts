@@ -374,7 +374,7 @@ export class GoogleMapsBrowser {
 
   private async _dismissConsentDialog(page: Page): Promise<void> {
     try {
-      const consent = await page.$(sel("consentDialog"));
+      const consent = await page.waitForSelector(sel("consentDialog"), { timeout: 5000 }).catch(() => null);
       if (consent !== null) {
         await humanDelay(300, 800);
         await consent.click();
@@ -402,3 +402,4 @@ export class GoogleMapsBrowser {
     );
   }
 }
+

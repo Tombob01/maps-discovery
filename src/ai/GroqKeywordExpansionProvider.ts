@@ -21,7 +21,7 @@ import type {
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const TIMEOUT_MS = 3_000;
-const MODEL = "llama3-8b-8192";
+const MODEL = "llama-3.3-70b-versatile";
 
 const VALID_POPULARITIES = new Set<string>(["high", "medium", "low"]);
 const VALID_CATEGORIES = new Set<string>([

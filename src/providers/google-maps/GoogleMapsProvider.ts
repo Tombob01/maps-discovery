@@ -275,6 +275,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
         // Collect all cards currently visible
         const cards = await this.adapter.getResultCards(page);
         const cardCount = cards.length;
+        console.log(`[discover] cardCount=${cardCount} lastCardCount=${lastCardCount} totalYielded=${totalYielded} emptyScrolls=${emptyScrolls}`);
 
         if (cardCount === lastCardCount) {
           // No new cards loaded since last scroll
@@ -290,9 +291,11 @@ export class GoogleMapsProvider implements IBrowserProvider {
         }
 
         emptyScrolls = 0;
+        const processFromIndex = lastCardCount;
         lastCardCount = cardCount;
 
-        for (let i = 0; i < cards.length && totalYielded < maxResults; i++) {
+        console.log(`[discover] for-loop: starting i=${processFromIndex} cards.length=${cards.length}`);
+        for (let i = processFromIndex; i < cards.length && totalYielded < maxResults; i++) {
           const card = cards[i];
           if (card === undefined) continue;
 
@@ -316,7 +319,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
               i + 1, // 1-based position
             );
           } catch (extractErr) {
-            // Non-fatal: skip this card and continue
+            console.log(`[discover] extractFromCard failed at i=${i}:`, extractErr instanceof Error ? extractErr.message : String(extractErr));
             continue;
           }
 
@@ -325,6 +328,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
             payload.placeId ??
             this._syntheticId(payload.listingUrl ?? `position:${i}`);
 
+          console.log(`[discover] i=${i} resultId=${resultId} seen=${seenPlaceIds.has(resultId)}`);
           // Skip duplicates within the same session
           if (seenPlaceIds.has(resultId)) continue;
           seenPlaceIds.add(resultId);

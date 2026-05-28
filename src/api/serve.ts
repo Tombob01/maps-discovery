@@ -1,3 +1,4 @@
+import 'dotenv/config';
 /**
  * @module api/serve
  * HTTP server entrypoint.
@@ -81,3 +82,4 @@ main().catch((err) => {
   console.error("[api] Fatal error:", err);
   process.exit(1);
 });
+

@@ -59,6 +59,7 @@ export class NormalizationStage implements IPipelineStage<NormalizationJobPayloa
     // 1. Fetch raw result
     let rawResult: ProviderResult | null;
     try {
+    console.log("[norm] payload:", JSON.stringify({runId: payload.runId, queryId: payload.queryId, rawResultId: payload.rawResultId, providerId: payload.providerId}));
       rawResult = await this.options.fetchRawResult(payload.rawResultId);
     } catch (e) {
       return err({

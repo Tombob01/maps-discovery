@@ -1,8 +1,8 @@
-﻿/**
+/**
  * @module api/RunService
  *
  * Business logic for creating, retrieving, and summarising runs.
- * Stateless â€” all state lives in the injected store.
+ * Stateless — all state lives in the injected store.
  */
 
 import type {
@@ -21,7 +21,7 @@ import type { IExporter } from "../exporters/IExporter.js";
 import { isOk } from "../core/types/common.js";
 
 // ---------------------------------------------------------------------------
-// Store interfaces â€” swappable implementations (in-memory / DB)
+// Store interfaces — swappable implementations (in-memory / DB)
 // ---------------------------------------------------------------------------
 
 export interface IRunStore {
@@ -67,7 +67,7 @@ export class RunService {
     }
 
     const now = new Date();
-    const id = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const id = crypto.randomUUID();
 
     const run: Run = {
       id: id as import("../core/types/common.js").RunID,

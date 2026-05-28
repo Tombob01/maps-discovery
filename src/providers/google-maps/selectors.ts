@@ -202,7 +202,7 @@ export const SELECTORS = {
   },
 
   consentDialog: {
-    selector: 'div[aria-modal="true"] button[aria-label*="Accept"]',
+    selector: 'button[jsname="tWT92d"]',
     description: "Cookie consent dialog accept button",
     fragility: "MEDIUM",
   },
