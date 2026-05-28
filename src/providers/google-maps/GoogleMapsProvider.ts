@@ -7,11 +7,14 @@
  *
  * Discovery algorithm:
  *   1. Navigate to Google Maps search for the resolved query text
- *   2. Scroll the sidebar to load results progressively
- *   3. For each new result card: open detail panel, extract raw payload
- *   4. Yield a ProviderResult containing the GoogleMapsRawPayload
- *   5. Continue scrolling until end-of-results or maxResults reached
- *   6. On each yield, attach a ResumeToken encoding scroll progress
+ *   2. Capture the live search URL immediately after navigation succeeds
+ *   3. Scroll the sidebar to load results progressively
+ *   4. For each new result card: open detail panel, extract raw payload
+ *   5. After extraction, restore the search page via explicit goto(searchUrl)
+ *      rather than page.goBack() — goBack() is non-deterministic on Maps SPA
+ *   6. Yield a ProviderResult containing the GoogleMapsRawPayload
+ *   7. Continue scrolling until end-of-results or maxResults reached
+ *   8. On each yield, attach a ResumeToken encoding scroll progress
  *
  * Resumability:
  *   - ResumeToken carries { strategy: "cursor", pageRequest: { cursor } }
@@ -24,6 +27,7 @@
  *   - Page load timeout → retry up to policy.retry.maxAttempts
  *   - Browser crash → throw ProviderError.retryable (job will be requeued)
  *   - Individual card extraction failure → log and skip (non-fatal)
+ *   - Search page restoration failure → log and skip remaining cards in batch
  */
 
 import { type GoogleMapsAdapter } from "./GoogleMapsAdapter.js";
@@ -54,6 +58,27 @@ import type { ScrapingPolicy } from "../../core/types/rate-limit.js";
 const PROVIDER_ID = "google-maps";
 const DISPLAY_NAME = "Google Maps";
 
+// ---------------------------------------------------------------------------
+// Minimal structured logger
+//
+// All scraping diagnostics go through this helper so they can be silenced in
+// production by setting LOG_LEVEL or by switching the implementation.
+// Uses console.debug (filtered out by default in most log aggregators) rather
+// than console.log, so discovery runs are not noisy in production.
+// Errors always go to console.error regardless of level.
+// ---------------------------------------------------------------------------
+
+const log = {
+  debug: (...args: unknown[]): void => {
+    // Replace with a structured logger (pino, winston, etc.) if needed.
+    // console.debug is suppressed by default in most production log pipelines.
+    console.debug("[discover]", ...args);
+  },
+  error: (...args: unknown[]): void => {
+    console.error("[discover]", ...args);
+  },
+};
+
 /**
  * Maximum results Google Maps typically surfaces for any query.
  * The sidebar rarely shows more than ~120 results regardless of scrolling.
@@ -67,14 +92,21 @@ const SCROLL_SETTLE_MAX_MS = 1800;
 /** How many scroll attempts before declaring end-of-results. */
 const MAX_EMPTY_SCROLL_ATTEMPTS = 4;
 
+/**
+ * Timeout (ms) to wait for the results feed after restoring the search page.
+ * Shorter than the full page timeout — if the feed doesn't appear within
+ * this window after an explicit goto(), something is wrong.
+ */
+const SEARCH_RESTORE_TIMEOUT_MS = 8000;
+
 // ---------------------------------------------------------------------------
 // Resume cursor — what's stored in ResumeToken.pageRequest.cursor
 // ---------------------------------------------------------------------------
 
 interface GoogleMapsCursor {
-  /** IDs of results already yielded � used for identity-based resume. */
+  /** IDs of results already yielded — used for identity-based resume. */
   readonly yieldedIds: readonly string[];
-  /** The search query text � used to verify the token is still valid. */
+  /** The search query text — used to verify the token is still valid. */
   readonly queryHash: string;
 }
 
@@ -179,7 +211,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
     if (!this._browserReady) {
       return {
         status: "unavailable",
-        reason: "Browser not initialised — call initializeBrowser() first",
+        reason: "BROWSER_LAUNCH_FAILED: Browser not initialised — call initializeBrowser() first",
       };
     }
     if (!this.browser.isReady) {
@@ -212,7 +244,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
       throw ProviderError.fatal(
         "BROWSER_LAUNCH_FAILED",
         PROVIDER_ID,
-        "Browser not initialised — call initializeBrowser() before discover()",
+        "BROWSER_LAUNCH_FAILED: Browser not initialised — call initializeBrowser() before discover()",
       );
     }
 
@@ -240,13 +272,13 @@ export class GoogleMapsProvider implements IBrowserProvider {
       }
     }
 
-    // ── Open a new page ──────────────────────────────────────────────────────
+    // ── Open a new page ───────────────────────────────────────────────────────
     const pageResult = await this.browser.newPage();
     if (!pageResult.ok) throw pageResult.error;
     const page = pageResult.value;
 
     try {
-      // ── Navigate to search ─────────────────────────────────────────────────
+      // ── Navigate to search ────────────────────────────────────────────────
       const navResult = await withRetry(
         () => this.browser.navigateToSearch(page, query.rawText),
         this.policy.retry.maxAttempts,
@@ -256,7 +288,20 @@ export class GoogleMapsProvider implements IBrowserProvider {
       );
       if (!navResult.ok) throw navResult.error;
 
-      // ── Scraping loop ──────────────────────────────────────────────────────
+      // ── Capture the live search URL immediately after navigation ──────────
+      // We use this for deterministic restoration after detail panel visits.
+      // page.goBack() is unreliable on Maps because:
+      //   - Maps is a SPA: the "back" entry in browser history may be a
+      //     partially-constructed state, not a fully-rendered search results page
+      //   - The sidebar / feed DOM is not guaranteed to be reconstructed from
+      //     history; Maps often re-renders an empty or wrong state
+      //   - The consent redirect can intercept goBack() on first runs
+      // Explicit goto(searchUrl) is deterministic: Maps always renders the
+      // full results feed for a direct search URL request.
+      const searchUrl = page.url();
+      log.debug(`searchUrl captured: ${searchUrl}`);
+
+      // ── Scraping loop ─────────────────────────────────────────────────────
       const seenPlaceIds = new Set<string>(resumedIds);
       let totalYielded = 0;
       let emptyScrolls = 0;
@@ -275,7 +320,6 @@ export class GoogleMapsProvider implements IBrowserProvider {
         // Collect all cards currently visible
         const cards = await this.adapter.getResultCards(page);
         const cardCount = cards.length;
-        console.log(`[discover] cardCount=${cardCount} lastCardCount=${lastCardCount} totalYielded=${totalYielded} emptyScrolls=${emptyScrolls}`);
 
         if (cardCount === lastCardCount) {
           // No new cards loaded since last scroll
@@ -294,12 +338,13 @@ export class GoogleMapsProvider implements IBrowserProvider {
         const processFromIndex = lastCardCount;
         lastCardCount = cardCount;
 
-        console.log(`[discover] for-loop: starting i=${processFromIndex} cards.length=${cards.length}`);
-        for (let i = processFromIndex; i < cards.length && totalYielded < maxResults; i++) {
+        for (
+          let i = processFromIndex;
+          i < cards.length && totalYielded < maxResults;
+          i++
+        ) {
           const card = cards[i];
           if (card === undefined) continue;
-
-          // Skip cards already yielded in a previous session (identity-based � handled by seenPlaceIds pre-population)
 
           // Apply inter-request delay
           if (i > 0) {
@@ -309,7 +354,8 @@ export class GoogleMapsProvider implements IBrowserProvider {
             await humanDelay(delay, delay + this.policy.rateLimit.jitterMs);
           }
 
-          // Extract raw payload
+          // Extract raw payload — this clicks the card and opens the detail panel,
+          // navigating the page away from the search results URL.
           let payload: GoogleMapsRawPayload;
           try {
             payload = await this.adapter.extractFromCard(
@@ -319,28 +365,63 @@ export class GoogleMapsProvider implements IBrowserProvider {
               i + 1, // 1-based position
             );
           } catch (extractErr) {
-            console.log(`[discover] extractFromCard failed at i=${i}:`, extractErr instanceof Error ? extractErr.message : String(extractErr));
+            log.error(
+              `extractFromCard failed at i=${i}:`,
+              extractErr instanceof Error
+                ? extractErr.message
+                : String(extractErr),
+            );
+            // The click inside extractFromCard may have partially fired —
+            // the URL could be mid-transition. Only restore if we actually
+            // navigated away; if the URL is still the search URL, the page
+            // is already in the right state and a redundant goto() would
+            // reload the entire feed unnecessarily.
+            if (page.url() !== searchUrl) {
+              await this._restoreSearchPage(page, searchUrl, i);
+            }
             continue;
           }
-          // Navigate back to search results — extractFromCard may have navigated away.
-          // Re-query cards to avoid stale ElementHandle references.
-          try {
-            await page.goBack({ waitUntil: "domcontentloaded" });
-            await page.waitForSelector('div[role="feed"]', { timeout: 5000 });
-          } catch {
-            // best-effort recovery — if goBack fails, continue with stale page
+
+          // ── Restore search page after detail extraction ───────────────────
+          // extractFromCard() always fires card.click(), which triggers a Maps
+          // SPA navigation. We check page.url() before restoring: if the URL
+          // already matches searchUrl (e.g. click fired but detail panel never
+          // opened, leaving the page on the search results), skip the goto()
+          // to avoid an unnecessary full feed reload.
+          //
+          // We use explicit goto(searchUrl) rather than goBack() because:
+          //   - goBack() relies on browser history state, which Maps does not
+          //     reliably populate for SPA transitions
+          //   - A direct URL request always produces a fully-rendered feed
+          let restored = true;
+          if (page.url() !== searchUrl) {
+            restored = await this._restoreSearchPage(page, searchUrl, i);
+          } else {
+            log.debug(`i=${i} URL unchanged — skipping restoration goto`);
           }
-          // Re-fetch cards after navigation to avoid stale handles
+
+          if (!restored) {
+            // Could not restore the search page — the session may be broken
+            // (consent dialog, CAPTCHA, network error). Abort this batch.
+            // The cards processed so far have already been yielded; the run
+            // will end with a partial result set rather than crashing.
+            log.error(`search page restoration failed at i=${i} — aborting batch`);
+            break;
+          }
+
+          // Re-query cards from the freshly-loaded search page.
+          // All ElementHandles from before navigation are stale and must not
+          // be reused — Playwright will throw "Element is not attached" if they are.
           const freshCards = await this.adapter.getResultCards(page);
-          // If card is gone after navigation (DOM changed), skip this index
-          if (freshCards[i] === undefined) continue;
+          log.debug(
+            `i=${i} post-restore cards: ${freshCards.length} (pre-extraction: ${cards.length})`,
+          );
 
           // Derive a stable result ID — prefer Place ID, fall back to URL hash
           const resultId =
             payload.placeId ??
             this._syntheticId(payload.listingUrl ?? `position:${i}`);
 
-          console.log(`[discover] i=${i} resultId=${resultId} seen=${seenPlaceIds.has(resultId)}`);
           // Skip duplicates within the same session
           if (seenPlaceIds.has(resultId)) continue;
           seenPlaceIds.add(resultId);
@@ -364,6 +445,12 @@ export class GoogleMapsProvider implements IBrowserProvider {
           };
 
           yield result;
+
+          // After yielding, update lastCardCount to the freshly-queried count
+          // so the outer loop doesn't re-process cards we already handled.
+          // Note: freshCards.length may differ from cards.length if Maps
+          // rendered additional results while we were on the detail panel.
+          lastCardCount = freshCards.length;
         }
 
         // After processing the current batch, scroll for more
@@ -382,6 +469,44 @@ export class GoogleMapsProvider implements IBrowserProvider {
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Restores the search results page by navigating explicitly to the captured
+   * search URL, then waiting for the results feed to be ready.
+   *
+   * Returns true if the feed is present and ready for card queries.
+   * Returns false if navigation or the feed wait times out — caller should
+   * treat this as a non-recoverable batch error and stop processing.
+   *
+   * Why explicit goto() instead of goBack():
+   *   Google Maps is a SPA. When a card detail panel opens, Maps updates
+   *   the URL and re-renders the right panel in-place — it does NOT push a
+   *   clean history entry that goBack() can reliably reconstruct. The back
+   *   entry may resolve to an intermediate SPA state with no sidebar feed,
+   *   or trigger a consent/redirect interception on some sessions. A direct
+   *   goto() with the original search URL bypasses all of that: Maps always
+   *   constructs a full search results page from a direct URL request.
+   */
+  private async _restoreSearchPage(
+    page: import("playwright").Page,
+    searchUrl: string,
+    cardIndex: number,
+  ): Promise<boolean> {
+    try {
+      await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
+      await page.waitForSelector('div[role="feed"]', {
+        timeout: SEARCH_RESTORE_TIMEOUT_MS,
+      });
+      log.debug(`search page restored after card i=${cardIndex}`);
+      return true;
+    } catch (err) {
+      log.error(
+        `search page restoration failed after card i=${cardIndex}:`,
+        err instanceof Error ? err.message : String(err),
+      );
+      return false;
+    }
+  }
 
   /**
    * Creates a synthetic result ID when no Place ID is available.
