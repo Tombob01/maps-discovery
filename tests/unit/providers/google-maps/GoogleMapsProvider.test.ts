@@ -365,7 +365,7 @@ describe("GoogleMapsProvider.discover()", () => {
       await collectResults(provider.discover(makeQuery() as never));
 
       // getResultCards should have been called more than once (initial + post-restore)
-      expect(mockAdapter.getResultCards).toHaveBeenCalledTimes(7);
+      expect(mockAdapter.getResultCards).toHaveBeenCalledTimes(8);
     });
   });
 
@@ -725,4 +725,97 @@ describe("GoogleMapsProvider.discover()", () => {
       expect(page.goBack).not.toHaveBeenCalled();
     });
   });
+  // ── Feed depth restoration ──────────────────────────────────────────────────
+
+  describe("_restoreFeedDepth after search page restoration", () => {
+    it("returns cards immediately if feed already meets target count", async () => {
+      // detailUrl ensures URL guard fires and _restoreSearchPage is called,
+      // then _restoreFeedDepth is called with targetCount = 1 card.
+      // The first getResultCards call inside _restoreFeedDepth returns 1 card
+      // straight away — no scroll should be needed.
+      const searchUrl = "https://www.google.com/maps/search/plumber";
+      const detailUrl = "https://www.google.com/maps/place/AcmePlumbing/@1,2,17z";
+      const { provider, mockAdapter, mockBrowser } = buildProvider({
+        pageUrl: searchUrl,
+        detailUrl,
+        // outer loop: 1 card; _restoreFeedDepth internal call: 1 card; outer empty scrolls: []x4
+        cards: [[makeMockCard("c0")], [makeMockCard("c0")], [], [], [], [], [], []],
+        payloads: [makePayload("ChIJ_A")],
+      });
+
+      await collectResults(provider.discover(makeQuery() as never));
+
+      // scrollResultsSidebar should NOT have been called inside _restoreFeedDepth
+      // (target already met on first getResultCards call inside helper).
+      // It IS called by the outer loop for empty scroll attempts.
+      expect(mockBrowser.scrollResultsSidebar).toHaveBeenCalledTimes(5);
+    });
+
+    it("scrolls until target card count is restored", async () => {
+      const searchUrl = "https://www.google.com/maps/search/plumber";
+      const detailUrl = "https://www.google.com/maps/place/AcmePlumbing/@1,2,17z";
+
+      // Simulate: initial batch has 2 cards; after restoration feed starts
+      // with only 1 card, then a scroll brings it back to 2.
+      //
+      // getResultCards call sequence:
+      //   1. outer loop initial batch            -> [c0, c1]  (2 cards)
+      //   2. _restoreFeedDepth first check       -> [c0]      (1 card, below target=2)
+      //   3. _restoreFeedDepth after scroll      -> [c0, c1]  (2 cards, target met)
+      //   -- card c1 extracted next --
+      //   4. _restoreFeedDepth first check       -> [c0, c1]  (2 cards, target met immediately)
+      //   5+ outer loop empty scrolls            -> []  x4
+      const card0 = makeMockCard("c0");
+      const card1 = makeMockCard("c1");
+
+      const mockBrowser = {
+        launch: vi.fn().mockResolvedValue({ ok: true }),
+        newPage: vi.fn(),
+        navigateToSearch: vi.fn().mockResolvedValue({ ok: true }),
+        isCaptchaPresent: vi.fn().mockResolvedValue(false),
+        isEndOfResults: vi.fn().mockResolvedValue(false),
+        scrollResultsSidebar: vi.fn().mockResolvedValue(undefined),
+        shutdown: vi.fn().mockResolvedValue(undefined),
+        isReady: true,
+      };
+
+      const page = makeMockPage(searchUrl, detailUrl);
+      page.goto.mockResolvedValue(undefined);
+      mockBrowser.newPage.mockResolvedValue({ ok: true, value: page });
+
+      let callCount = 0;
+      const cardSequence = [
+        [card0, card1],  // 1: outer initial batch
+        [card0],         // 2: _restoreFeedDepth first check (below target)
+        [card0, card1],  // 3: _restoreFeedDepth after scroll (target met)
+        [card0, card1],  // 4: _restoreFeedDepth for card1 (target met immediately)
+        [], [], [], [],  // 5-8: outer empty scrolls
+      ];
+      const mockAdapter = {
+        getResultCards: vi.fn().mockImplementation(() =>
+          Promise.resolve(cardSequence[callCount++] ?? [])
+        ),
+        extractFromCard: vi.fn()
+          .mockResolvedValueOnce(makePayload("ChIJ_A"))
+          .mockResolvedValueOnce(makePayload("ChIJ_B")),
+      };
+
+      const provider = new GoogleMapsProvider(
+        makePolicy() as never,
+        mockBrowser as never,
+        mockAdapter as never,
+      );
+      (provider as unknown as { _browserReady: boolean })._browserReady = true;
+
+      const results = await collectResults(provider.discover(makeQuery() as never));
+
+      // Both cards should be yielded
+      expect(results).toHaveLength(2);
+
+      // scrollResultsSidebar called once inside _restoreFeedDepth (for card0's restore)
+      // plus once by outer loop after processing batch = 2 total minimum
+      expect(mockBrowser.scrollResultsSidebar.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
 });

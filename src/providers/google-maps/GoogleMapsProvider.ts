@@ -93,6 +93,13 @@ const SCROLL_SETTLE_MAX_MS = 1800;
 const MAX_EMPTY_SCROLL_ATTEMPTS = 4;
 
 /**
+ * Maximum scroll attempts when re-hydrating feed depth after search page restoration.
+ * Each scroll typically loads ~9 additional cards; 10 attempts covers ~90 extra cards
+ * on top of the initial ~9 rendered on fresh load, sufficient for the 120-result cap.
+ */
+const MAX_FEED_DEPTH_RESTORE_ATTEMPTS = 10;
+
+/**
  * Timeout (ms) to wait for the results feed after restoring the search page.
  * Shorter than the full page timeout — if the feed doesn't appear within
  * this window after an explicit goto(), something is wrong.
@@ -354,6 +361,12 @@ export class GoogleMapsProvider implements IBrowserProvider {
             await humanDelay(delay, delay + this.policy.rateLimit.jitterMs);
           }
 
+          // Capture how many cards were loaded before we navigate away.
+          // After restoration, goto() resets the feed scroll to the top and
+          // Maps only renders the first ~9 cards again. We need to re-scroll
+          // to at least this depth before re-querying cards.
+          const previousCardCount = cards.length;
+
           // Extract raw payload — this clicks the card and opens the detail panel,
           // navigating the page away from the search results URL.
           let payload: GoogleMapsRawPayload;
@@ -409,12 +422,12 @@ export class GoogleMapsProvider implements IBrowserProvider {
             break;
           }
 
-          // Re-query cards from the freshly-loaded search page.
-          // All ElementHandles from before navigation are stale and must not
-          // be reused — Playwright will throw "Element is not attached" if they are.
-          const freshCards = await this.adapter.getResultCards(page);
+          // Re-query cards after restoring feed depth.
+          // goto() resets scroll to top; _restoreFeedDepth scrolls until
+          // at least previousCardCount cards are rendered again (or bails out).
+          const freshCards = await this._restoreFeedDepth(page, previousCardCount);
           log.debug(
-            `i=${i} post-restore cards: ${freshCards.length} (pre-extraction: ${cards.length})`,
+            `i=${i} post-restore cards: ${freshCards.length} (target: ${previousCardCount})`,
           );
 
           // Derive a stable result ID — prefer Place ID, fall back to URL hash
@@ -506,6 +519,42 @@ export class GoogleMapsProvider implements IBrowserProvider {
       );
       return false;
     }
+  }
+
+  /**
+   * After restoring the search page via goto(), Maps resets the feed scroll
+   * position to the top and only renders the first batch of cards (~9).
+   * This helper re-scrolls the feed until at least `targetCount` cards are
+   * visible, mirroring the depth that was loaded before the detail panel visit.
+   *
+   * Returns the card array at the point we stop (either target reached,
+   * scroll stalled, or max attempts exhausted). The caller uses this as
+   * `freshCards` to avoid a redundant extra getResultCards() call.
+   *
+   * Bounded by MAX_FEED_DEPTH_RESTORE_ATTEMPTS to prevent infinite loops.
+   */
+  private async _restoreFeedDepth(
+    page: import('playwright').Page,
+    targetCount: number,
+  ): Promise<object[]> {
+    let currentCards = await this.adapter.getResultCards(page);
+    if (currentCards.length >= targetCount) return currentCards;
+
+    for (let attempt = 0; attempt < MAX_FEED_DEPTH_RESTORE_ATTEMPTS; attempt++) {
+      const before = currentCards.length;
+      await this.browser.scrollResultsSidebar(page);
+      await humanDelay(SCROLL_SETTLE_MIN_MS, SCROLL_SETTLE_MAX_MS);
+      currentCards = await this.adapter.getResultCards(page);
+
+      log.debug(
+        `_restoreFeedDepth attempt ${attempt + 1}: ${currentCards.length}/${targetCount} cards`,
+      );
+
+      if (currentCards.length >= targetCount) break;
+      if (currentCards.length === before) break;
+    }
+
+    return currentCards;
   }
 
   /**
