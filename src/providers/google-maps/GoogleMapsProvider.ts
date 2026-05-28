@@ -322,6 +322,18 @@ export class GoogleMapsProvider implements IBrowserProvider {
             console.log(`[discover] extractFromCard failed at i=${i}:`, extractErr instanceof Error ? extractErr.message : String(extractErr));
             continue;
           }
+          // Navigate back to search results — extractFromCard may have navigated away.
+          // Re-query cards to avoid stale ElementHandle references.
+          try {
+            await page.goBack({ waitUntil: "domcontentloaded" });
+            await page.waitForSelector('div[role="feed"]', { timeout: 5000 });
+          } catch {
+            // best-effort recovery — if goBack fails, continue with stale page
+          }
+          // Re-fetch cards after navigation to avoid stale handles
+          const freshCards = await this.adapter.getResultCards(page);
+          // If card is gone after navigation (DOM changed), skip this index
+          if (freshCards[i] === undefined) continue;
 
           // Derive a stable result ID — prefer Place ID, fall back to URL hash
           const resultId =
