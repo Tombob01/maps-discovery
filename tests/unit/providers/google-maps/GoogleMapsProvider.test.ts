@@ -288,7 +288,12 @@ describe("GoogleMapsProvider.discover()", () => {
 
     it("calls extractFromCard exactly once per card", async () => {
       const { provider, mockAdapter } = buildProvider({
-        cards: [[makeMockCard("c0"), makeMockCard("c1")], []],
+        cards: [
+          [makeMockCard("c0"), makeMockCard("c1")],  // initial batch
+          [makeMockCard("c0"), makeMockCard("c1")],  // post-restore card0
+          [makeMockCard("c0"), makeMockCard("c1")],  // post-restore card1
+          [], [], [], [], [],                         // outer empty scrolls
+        ],
         payloads: [makePayload("ChIJ_A"), makePayload("ChIJ_B")],
       });
 
@@ -299,7 +304,12 @@ describe("GoogleMapsProvider.discover()", () => {
 
     it("yields results in the order cards were processed", async () => {
       const { provider } = buildProvider({
-        cards: [[makeMockCard("c0"), makeMockCard("c1")], []],
+        cards: [
+          [makeMockCard("c0"), makeMockCard("c1")],
+          [makeMockCard("c0"), makeMockCard("c1")],
+          [makeMockCard("c0"), makeMockCard("c1")],
+          [], [], [], [], [],
+        ],
         payloads: [makePayload("ChIJ_001"), makePayload("ChIJ_002")],
       });
 
@@ -370,7 +380,7 @@ describe("GoogleMapsProvider.discover()", () => {
       await collectResults(provider.discover(makeQuery() as never));
 
       // getResultCards should have been called more than once (initial + post-restore)
-      expect(mockAdapter.getResultCards).toHaveBeenCalledTimes(9);
+      expect(mockAdapter.getResultCards).toHaveBeenCalledTimes(10);
     });
   });
 

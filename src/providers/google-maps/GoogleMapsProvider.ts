@@ -374,8 +374,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
             }
             if (restored) {
               // Re-scroll to restore feed depth before continuing
-              const restoredCards = await this._restoreFeedDepth(page, lastCardCount);
-              lastCardCount = restoredCards.length;
+              await this._restoreFeedDepth(page, lastCardCount);
             }
           }
 
