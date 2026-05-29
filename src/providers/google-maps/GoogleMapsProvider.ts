@@ -10,8 +10,8 @@
  *   2. Capture the live search URL immediately after navigation succeeds
  *   3. Scroll the sidebar to load results progressively
  *   4. For each new result card: open detail panel, extract raw payload
- *   5. After extraction, restore the search page via explicit goto(searchUrl)
- *      rather than page.goBack() — goBack() is non-deterministic on Maps SPA
+ *   5. After extraction, restore the search page via goBack(). If goBack() lands
+ *      without a feed, retry once. If both fail, break inner loop and defer to outer.
  *   6. Yield a ProviderResult containing the GoogleMapsRawPayload
  *   7. Continue scrolling until end-of-results or maxResults reached
  *   8. On each yield, attach a ResumeToken encoding scroll progress
@@ -366,14 +366,24 @@ export class GoogleMapsProvider implements IBrowserProvider {
 
           // Restore search results page if extractFromCard navigated away.
           // Strategy: try goBack() first — preserves scroll depth and rendered cards.
-          // Fall back to goto(searchUrl) only if goBack() fails or feed is missing.
+          // If both goBack() attempts fail, break inner loop and defer to outer scroll loop.
           const currentUrl = page.url();
           if (currentUrl !== searchUrl) {
             let restored = false;
             try {
               await page.goBack({ waitUntil: "domcontentloaded" });
-              const feed = await page.waitForSelector('div[role="feed"]', { timeout: 5000 }).catch(() => null);
-              if (feed !== null) {
+              let feed = await page.waitForSelector('div[role="feed"]', { timeout: 5000 }).catch(() => null);
+              if (feed === null) {
+                // Detail panel may have pushed two history entries — retry goBack() once
+                // before treating restoration as failed and deferring to the outer scroll loop.
+                log.debug(`i=${i} goBack() landed without feed — retrying goBack()`);
+                await page.goBack({ waitUntil: "domcontentloaded" });
+                feed = await page.waitForSelector('div[role="feed"]', { timeout: 5000 }).catch(() => null);
+                if (feed !== null) {
+                  restored = true;
+                  log.debug(`i=${i} restored via second goBack()`);
+                }
+              } else {
                 restored = true;
                 log.debug(`i=${i} restored via goBack()`);
               }
@@ -381,15 +391,25 @@ export class GoogleMapsProvider implements IBrowserProvider {
               // goBack failed — fall through to goto()
             }
             if (!restored) {
+              // Both goBack() attempts failed. The page is now in an unknown SPA
+              // state — not on the search feed. If we break here without resetting
+              // the page, the outer loop calls getResultCards() on a non-feed page,
+              // gets 0 cards, lastCardCount regresses to 0, and the stagnation
+              // detector exits after MAX_EMPTY_SCROLL_ATTEMPTS.
+              // Fix: silently navigate back to searchUrl so the outer loop lands
+              // on the feed and can scroll correctly. Do NOT call _restoreFeedDepth
+              // and do NOT set restored=true — we are not recovering this card,
+              // just resetting the page for the outer loop.
+              log.debug(`i=${i} both goBack() attempts failed — resetting page for outer loop`);
               try {
                 await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
                 await page.waitForSelector('div[role="feed"]', { timeout: 5000 });
-                restored = true;
-                log.debug(`i=${i} restored via goto(searchUrl)`);
+                log.debug(`i=${i} page reset to searchUrl for outer loop recovery`);
               } catch {
-                // Both failed — abort batch gracefully
-                break;
+                // Reset also failed — nothing we can do, break and let outer loop handle it
+                log.debug(`i=${i} page reset failed — breaking inner loop`);
               }
+              break;
             }
             if (restored) {
               const _restoredCards = await this._restoreFeedDepth(page, lastCardCount);
@@ -493,6 +513,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
     // attempts separately from total attempts so one empty scroll doesn't abort.
     let stagnantAttempts = 0;
     let previousRenderedCount = currentCards.length;
+    let bestCards = currentCards;
 
     for (let attempt = 0; attempt < MAX_FEED_DEPTH_RESTORE_ATTEMPTS; attempt++) {
       await this.browser.scrollResultsSidebar(page);
@@ -500,6 +521,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
       // is slower after a full goto() than during normal incremental scrolling.
       await humanDelay(SCROLL_SETTLE_MAX_MS, SCROLL_SETTLE_MAX_MS + 500);
       currentCards = await this.adapter.getResultCards(page);
+      if (currentCards.length > bestCards.length) bestCards = currentCards;
 
       const grew = currentCards.length > previousRenderedCount;
       if (grew) {
@@ -515,19 +537,19 @@ export class GoogleMapsProvider implements IBrowserProvider {
         );
       }
 
-      if (currentCards.length >= targetCount) {
+      if (bestCards.length >= targetCount) {
         log.debug(`_restoreFeedDepth: target ${targetCount} reached after ${attempt + 1} scrolls`);
         break;
       }
       if (stagnantAttempts >= MAX_FEED_DEPTH_STAGNANT_ATTEMPTS) {
         log.debug(
-          `_restoreFeedDepth: bailing after ${stagnantAttempts} stagnant scrolls (best: ${currentCards.length}/${targetCount})`,
+          `_restoreFeedDepth: bailing after ${stagnantAttempts} stagnant scrolls (best: ${bestCards.length}/${targetCount})`,
         );
         break;
       }
     }
 
-    return currentCards;
+    return bestCards;
   }
 
   /**
