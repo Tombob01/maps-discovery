@@ -380,9 +380,14 @@ export class GoogleMapsProvider implements IBrowserProvider {
               // the outer loop sees cardCount>lastCardCount after the next scroll
               // and correctly processes cards 9-17 as a new batch.
               lastCardCount = _restoredCards.length;
-              // DIAG: log available cards vs current index after restoration
-              const _diagCards = await this.adapter.getResultCards(page);
-              log.debug(`post-restore i=${i} available=${_diagCards.length} needed_index=${i} card_exists=${_diagCards[i] !== undefined}`);
+              // If restored feed is shorter than current index, break inner loop.
+              // Outer scroll loop will scroll and reload these cards as a new batch.
+              // Reuse _restoredCards from _restoreFeedDepth — no extra getResultCards call.
+              log.debug(`post-restore i=${i} available=${_restoredCards.length} card_exists=${_restoredCards[i] !== undefined}`);
+              if (_restoredCards[i] === undefined) {
+                log.debug(`i=${i} out of restored feed (${_restoredCards.length} cards) — deferring to outer scroll loop`);
+                break;
+              }
             }
           }
 

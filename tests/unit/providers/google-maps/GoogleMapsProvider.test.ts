@@ -265,7 +265,7 @@ describe("GoogleMapsProvider.discover()", () => {
   describe("happy path — single card batch", () => {
     it("yields one result for one card", async () => {
       const { provider } = buildProvider({
-        cards: [[makeMockCard("c0")], []],
+        cards: [[makeMockCard("c0")], [makeMockCard("c0")], [], [], [], []],
         payloads: [makePayload("ChIJ_A")],
       });
 
@@ -276,7 +276,7 @@ describe("GoogleMapsProvider.discover()", () => {
 
     it("result carries the providerResultId from the extracted placeId", async () => {
       const { provider } = buildProvider({
-        cards: [[makeMockCard("c0")], []],
+        cards: [[makeMockCard("c0")], [makeMockCard("c0")], [], [], [], []],
         payloads: [makePayload("ChIJ_001")],
       });
 
@@ -380,7 +380,7 @@ describe("GoogleMapsProvider.discover()", () => {
       await collectResults(provider.discover(makeQuery() as never));
 
       // getResultCards should have been called more than once (initial + post-restore)
-      expect(mockAdapter.getResultCards).toHaveBeenCalledTimes(11);
+      expect(mockAdapter.getResultCards).toHaveBeenCalledTimes(9);
     });
   });
 
