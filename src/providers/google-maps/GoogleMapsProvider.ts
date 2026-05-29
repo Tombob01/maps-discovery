@@ -386,6 +386,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
               log.debug(`post-restore i=${i} available=${_restoredCards.length} card_exists=${_restoredCards[i] !== undefined}`);
               if (_restoredCards[i] === undefined) {
                 log.debug(`i=${i} out of restored feed (${_restoredCards.length} cards) — deferring to outer scroll loop`);
+                lastCardCount = processFromIndex;
                 break;
               }
             }
