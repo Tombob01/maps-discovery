@@ -365,7 +365,7 @@ describe("GoogleMapsProvider.discover()", () => {
       await collectResults(provider.discover(makeQuery() as never));
 
       // getResultCards should have been called more than once (initial + post-restore)
-      expect(mockAdapter.getResultCards).toHaveBeenCalledTimes(8);
+      expect(mockAdapter.getResultCards).toHaveBeenCalledTimes(9);
     });
   });
 
@@ -711,8 +711,19 @@ describe("GoogleMapsProvider.discover()", () => {
 
   describe("goBack is never used", () => {
     it("never calls page.goBack() regardless of how many cards are processed", async () => {
+      const c0 = makeMockCard("c0");
+      const c1 = makeMockCard("c1");
+      const c2 = makeMockCard("c2");
       const { provider, page } = buildProvider({
-        cards: [[makeMockCard("c0"), makeMockCard("c1"), makeMockCard("c2")], []],
+        // post-restore batches return 3 cards each so _restoreFeedDepth exits
+        // immediately (target met on first check) — no real humanDelay fires.
+        cards: [
+          [c0, c1, c2],  // initial batch
+          [c0, c1, c2],  // post-restore card0
+          [c0, c1, c2],  // post-restore card1
+          [c0, c1, c2],  // post-restore card2
+          [], [], [], [], // outer empty scrolls
+        ],
         payloads: [
           makePayload("ChIJ_A"),
           makePayload("ChIJ_B"),
