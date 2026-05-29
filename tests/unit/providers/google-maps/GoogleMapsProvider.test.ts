@@ -380,7 +380,7 @@ describe("GoogleMapsProvider.discover()", () => {
       await collectResults(provider.discover(makeQuery() as never));
 
       // getResultCards should have been called more than once (initial + post-restore)
-      expect(mockAdapter.getResultCards).toHaveBeenCalledTimes(10);
+      expect(mockAdapter.getResultCards).toHaveBeenCalledTimes(11);
     });
   });
 

@@ -374,7 +374,15 @@ export class GoogleMapsProvider implements IBrowserProvider {
             }
             if (restored) {
               // Re-scroll to restore feed depth before continuing
-              await this._restoreFeedDepth(page, lastCardCount);
+              const _restoredCards = await this._restoreFeedDepth(page, lastCardCount);
+              // Update lastCardCount to reflect actual restored feed depth.
+              // If Maps only restored 9 of 18 cards, set lastCardCount=9 so
+              // the outer loop sees cardCount>lastCardCount after the next scroll
+              // and correctly processes cards 9-17 as a new batch.
+              lastCardCount = _restoredCards.length;
+              // DIAG: log available cards vs current index after restoration
+              const _diagCards = await this.adapter.getResultCards(page);
+              log.debug(`post-restore i=${i} available=${_diagCards.length} needed_index=${i} card_exists=${_diagCards[i] !== undefined}`);
             }
           }
 
