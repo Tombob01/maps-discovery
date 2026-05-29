@@ -30,3 +30,7 @@ data/exports/
 .DS_Store
 Thumbs.db
 ui-export.zip
+# Patch scripts and discovery logs
+patch_*.cjs
+check_run.cjs
+discover_log*.txt

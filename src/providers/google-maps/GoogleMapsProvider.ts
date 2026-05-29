@@ -332,7 +332,11 @@ export class GoogleMapsProvider implements IBrowserProvider {
         }
 
         emptyScrolls = 0;
-        const processFromIndex = lastCardCount;
+        // processFromIndex must never exceed cardCount — if lastCardCount is
+        // higher than cardCount (feed collapsed after a deferred restoration),
+        // clamping prevents the inner loop from starting past the array end
+        // and silently running zero iterations, which would regress lastCardCount.
+        const processFromIndex = Math.min(lastCardCount, cardCount);
         lastCardCount = cardCount;
 
         for (let i = processFromIndex; i < cards.length && totalYielded < maxResults; i++) {
@@ -360,34 +364,51 @@ export class GoogleMapsProvider implements IBrowserProvider {
             // Extraction failed — attempt restoration if URL changed, then skip card
           }
 
-          // Restore search results page if extractFromCard navigated away
+          // Restore search results page if extractFromCard navigated away.
+          // Strategy: try goBack() first — preserves scroll depth and rendered cards.
+          // Fall back to goto(searchUrl) only if goBack() fails or feed is missing.
           const currentUrl = page.url();
           if (currentUrl !== searchUrl) {
             let restored = false;
             try {
-              await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
-              await page.waitForSelector('div[role="feed"]', { timeout: 5000 });
-              restored = true;
+              await page.goBack({ waitUntil: "domcontentloaded" });
+              const feed = await page.waitForSelector('div[role="feed"]', { timeout: 5000 }).catch(() => null);
+              if (feed !== null) {
+                restored = true;
+                log.debug(`i=${i} restored via goBack()`);
+              }
             } catch {
-              // Restoration failed — abort this batch gracefully
-              break;
+              // goBack failed — fall through to goto()
+            }
+            if (!restored) {
+              try {
+                await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
+                await page.waitForSelector('div[role="feed"]', { timeout: 5000 });
+                restored = true;
+                log.debug(`i=${i} restored via goto(searchUrl)`);
+              } catch {
+                // Both failed — abort batch gracefully
+                break;
+              }
             }
             if (restored) {
-              // Re-scroll to restore feed depth before continuing
               const _restoredCards = await this._restoreFeedDepth(page, lastCardCount);
-              // Update lastCardCount to reflect actual restored feed depth.
-              // If Maps only restored 9 of 18 cards, set lastCardCount=9 so
-              // the outer loop sees cardCount>lastCardCount after the next scroll
-              // and correctly processes cards 9-17 as a new batch.
-              lastCardCount = _restoredCards.length;
-              // If restored feed is shorter than current index, break inner loop.
-              // Outer scroll loop will scroll and reload these cards as a new batch.
-              // Reuse _restoredCards from _restoreFeedDepth — no extra getResultCards call.
               log.debug(`post-restore i=${i} available=${_restoredCards.length} card_exists=${_restoredCards[i] !== undefined}`);
               if (_restoredCards[i] === undefined) {
+                // Feed shorter than current index after restoration.
+                // Do NOT update lastCardCount — keep it at its pre-extraction value
+                // so the outer scroll loop sees cardCount > lastCardCount after
+                // loading more cards and correctly processes the next batch.
                 log.debug(`i=${i} out of restored feed (${_restoredCards.length} cards) — deferring to outer scroll loop`);
-                lastCardCount = processFromIndex;
                 break;
+              }
+              // If goBack() restored more cards than the current batch had
+              // AND we are at the last card of this batch, update lastCardCount
+              // so the outer loop processes the extra cards in the next iteration.
+              // For mid-batch cards, leave lastCardCount unchanged so the outer
+              // loop scrolls for more after the batch completes normally.
+              if (_restoredCards.length > lastCardCount) {
+                log.debug(`post-restore feed grew: ${lastCardCount} -> ${_restoredCards.length} cards (lastCardCount unchanged — owned by outer loop)`);
               }
             }
           }

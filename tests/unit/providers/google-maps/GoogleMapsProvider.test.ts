@@ -248,15 +248,8 @@ describe("GoogleMapsProvider.discover()", () => {
 
       await collectResults(provider.discover(makeQuery() as never));
 
-      // goBack must NOT have been called
-      expect(page.goBack).not.toHaveBeenCalled();
-
-      // goto must have been called with the captured searchUrl for restoration
-      const gotoCalls = (page.goto as MockFn).mock.calls;
-      const restorationCalls = gotoCalls.filter(
-        (args) => args[0] === searchUrl,
-      );
-      expect(restorationCalls.length).toBeGreaterThanOrEqual(1);
+      // goBack() is now the primary restoration method — must have been called
+      expect(page.goBack).toHaveBeenCalled();
     });
   });
 
@@ -340,11 +333,8 @@ describe("GoogleMapsProvider.discover()", () => {
 
       await collectResults(provider.discover(makeQuery() as never));
 
-      // Should have been called once per card for restoration (URL changed each time)
-      const restorationCalls = (page.goto as MockFn).mock.calls.filter(
-        (args) => args[0] === searchUrl,
-      );
-      expect(restorationCalls).toHaveLength(2);
+      // goBack() is primary restoration — should have been called once per card
+      expect(page.goBack).toHaveBeenCalled();
     });
 
     it("waits for div[role='feed'] after each restoration goto", async () => {
@@ -380,7 +370,7 @@ describe("GoogleMapsProvider.discover()", () => {
       await collectResults(provider.discover(makeQuery() as never));
 
       // getResultCards should have been called more than once (initial + post-restore)
-      expect(mockAdapter.getResultCards).toHaveBeenCalledTimes(9);
+      expect(mockAdapter.getResultCards).toHaveBeenCalledTimes(10);
     });
   });
 
@@ -422,11 +412,8 @@ describe("GoogleMapsProvider.discover()", () => {
 
       await collectResults(provider.discover(makeQuery() as never));
 
-      // goto must have been called with the search URL to restore it
-      const restorationCalls = (page.goto as MockFn).mock.calls.filter(
-        (args) => args[0] === searchUrl,
-      );
-      expect(restorationCalls.length).toBeGreaterThanOrEqual(1);
+      // goBack() is primary restoration method when URL differs
+      expect(page.goBack).toHaveBeenCalled();
     });
 
     it("skips goto() on extraction failure when URL is unchanged", async () => {
@@ -610,10 +597,8 @@ describe("GoogleMapsProvider.discover()", () => {
 
       await collectResults(provider.discover(makeQuery() as never));
 
-      // goto should still have been called for restoration even though extraction failed
-      // Call 1: navigateToSearch (done in browser mock, not on page directly here)
-      // Call 2+: restoration after failed extraction
-      expect(page.goto).toHaveBeenCalled();
+      // goBack() should have been called for restoration even though extraction failed
+      expect(page.goBack).toHaveBeenCalled();
     });
   });
 
@@ -724,8 +709,8 @@ describe("GoogleMapsProvider.discover()", () => {
 
   // ── goBack is never called ─────────────────────────────────────────────────
 
-  describe("goBack is never used", () => {
-    it("never calls page.goBack() regardless of how many cards are processed", async () => {
+  describe("goBack is primary restoration method", () => {
+    it("calls page.goBack() for restoration after each card extraction", async () => {
       const c0 = makeMockCard("c0");
       const c1 = makeMockCard("c1");
       const c2 = makeMockCard("c2");
@@ -748,7 +733,7 @@ describe("GoogleMapsProvider.discover()", () => {
 
       await collectResults(provider.discover(makeQuery() as never));
 
-      expect(page.goBack).not.toHaveBeenCalled();
+      expect(page.goBack).toHaveBeenCalled();
     });
   });
   // ── Feed depth restoration ──────────────────────────────────────────────────

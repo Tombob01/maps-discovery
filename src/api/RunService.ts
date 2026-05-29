@@ -129,7 +129,7 @@ export class RunService {
     req: RecordListRequest,
   ): Promise<ApiResult<PaginatedResponse<RecordSummary>>> {
     const page = Math.max(1, req.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, req.pageSize ?? 20));
+    const pageSize = Math.min(500, Math.max(1, req.pageSize ?? 20));
 
     const { items, total } = await this.recordStore.list({
       ...req,

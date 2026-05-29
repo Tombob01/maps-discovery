@@ -226,6 +226,17 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
         addEvent(`run failed: ${msg}`, 'err');
         dispatch({ type: 'SET_RUN_STATUS', status: 'failed' });
         dispatch({ type: 'SET_ERROR', error: msg });
+        // Still attempt to load whatever records were inserted before the failure.
+        // runId is captured from createRun above — safe to use even after rejection.
+        if (state.runId !== null) {
+          facade.listRecords(state.runId).then(records => {
+            if (records.length > 0) {
+              addEvent(`${records.length} records loaded (partial run)`, 'ok');
+              dispatch({ type: 'SET_RECORDS', records });
+              dispatch({ type: 'SET_STEP', step: 'results' });
+            }
+          }).catch(() => { /* listRecords failed — no records to show */ });
+        }
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facade, state.keyword, state.location, state.selectedKeywords]);
