@@ -319,7 +319,12 @@ describe("GoogleMapsProvider.discover()", () => {
       const { provider, page } = buildProvider({
         pageUrl: searchUrl,
         detailUrl,
-        cards: [[makeMockCard("c0"), makeMockCard("c1")], []],
+        cards: [
+          [makeMockCard("c0"), makeMockCard("c1")],  // initial batch
+          [makeMockCard("c0"), makeMockCard("c1")],  // post-restore card0 (target met, no break)
+          [makeMockCard("c0"), makeMockCard("c1")],  // post-restore card1 (target met, no break)
+          [], [], [], [], [],                         // outer empty scrolls
+        ],
         payloads: [makePayload("ChIJ_A"), makePayload("ChIJ_B")],
       });
 

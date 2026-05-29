@@ -106,12 +106,6 @@ const MAX_FEED_DEPTH_RESTORE_ATTEMPTS = 5;
  */
 const MAX_FEED_DEPTH_STAGNANT_ATTEMPTS = 2;
 
-/**
- * Timeout (ms) to wait for the results feed after restoring the search page.
- * Shorter than the full page timeout — if the feed doesn't appear within
- * this window after an explicit goto(), something is wrong.
- */
-const SEARCH_RESTORE_TIMEOUT_MS = 8000;
 
 // ---------------------------------------------------------------------------
 // Resume cursor — what's stored in ResumeToken.pageRequest.cursor
@@ -302,20 +296,11 @@ export class GoogleMapsProvider implements IBrowserProvider {
       );
       if (!navResult.ok) throw navResult.error;
 
-      // ── Capture the live search URL immediately after navigation ──────────
-      // We use this for deterministic restoration after detail panel visits.
-      // page.goBack() is unreliable on Maps because:
-      //   - Maps is a SPA: the "back" entry in browser history may be a
-      //     partially-constructed state, not a fully-rendered search results page
-      //   - The sidebar / feed DOM is not guaranteed to be reconstructed from
-      //     history; Maps often re-renders an empty or wrong state
-      //   - The consent redirect can intercept goBack() on first runs
-      // Explicit goto(searchUrl) is deterministic: Maps always renders the
-      // full results feed for a direct search URL request.
+      // Capture the search URL immediately after navigation.
+      // Used to detect when extractFromCard navigates away and to restore the page.
       const searchUrl = page.url();
-      log.debug(`searchUrl captured: ${searchUrl}`);
 
-      // ── Scraping loop ─────────────────────────────────────────────────────
+      // ── Scraping loop ──────────────────────────────────────────────────────
       const seenPlaceIds = new Set<string>(resumedIds);
       let totalYielded = 0;
       let emptyScrolls = 0;
@@ -338,10 +323,8 @@ export class GoogleMapsProvider implements IBrowserProvider {
         if (cardCount === lastCardCount) {
           // No new cards loaded since last scroll
           if (await this.browser.isEndOfResults(page)) break;
-
           emptyScrolls++;
           if (emptyScrolls >= MAX_EMPTY_SCROLL_ATTEMPTS) break;
-
           // Scroll to load more
           await this.browser.scrollResultsSidebar(page);
           await humanDelay(SCROLL_SETTLE_MIN_MS, SCROLL_SETTLE_MAX_MS);
@@ -352,11 +335,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
         const processFromIndex = lastCardCount;
         lastCardCount = cardCount;
 
-        for (
-          let i = processFromIndex;
-          i < cards.length && totalYielded < maxResults;
-          i++
-        ) {
+        for (let i = processFromIndex; i < cards.length && totalYielded < maxResults; i++) {
           const card = cards[i];
           if (card === undefined) continue;
 
@@ -368,74 +347,40 @@ export class GoogleMapsProvider implements IBrowserProvider {
             await humanDelay(delay, delay + this.policy.rateLimit.jitterMs);
           }
 
-          // Capture how many cards were loaded before we navigate away.
-          // After restoration, goto() resets the feed scroll to the top and
-          // Maps only renders the first ~9 cards again. We need to re-scroll
-          // to at least this depth before re-querying cards.
-          const previousCardCount = cards.length;
-
-          // Extract raw payload — this clicks the card and opens the detail panel,
-          // navigating the page away from the search results URL.
-          let payload: GoogleMapsRawPayload;
+          // Extract raw payload — may navigate away from search results
+          let payload: GoogleMapsRawPayload | undefined;
           try {
             payload = await this.adapter.extractFromCard(
               page,
               card,
               query.rawText,
-              i + 1, // 1-based position
+              i + 1,
             );
-          } catch (extractErr) {
-            log.error(
-              `extractFromCard failed at i=${i}:`,
-              extractErr instanceof Error
-                ? extractErr.message
-                : String(extractErr),
-            );
-            // The click inside extractFromCard may have partially fired —
-            // the URL could be mid-transition. Only restore if we actually
-            // navigated away; if the URL is still the search URL, the page
-            // is already in the right state and a redundant goto() would
-            // reload the entire feed unnecessarily.
-            if (page.url() !== searchUrl) {
-              await this._restoreSearchPage(page, searchUrl, i);
+          } catch {
+            // Extraction failed — attempt restoration if URL changed, then skip card
+          }
+
+          // Restore search results page if extractFromCard navigated away
+          const currentUrl = page.url();
+          if (currentUrl !== searchUrl) {
+            let restored = false;
+            try {
+              await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
+              await page.waitForSelector('div[role="feed"]', { timeout: 5000 });
+              restored = true;
+            } catch {
+              // Restoration failed — abort this batch gracefully
+              break;
             }
-            continue;
+            if (restored) {
+              // Re-scroll to restore feed depth before continuing
+              const restoredCards = await this._restoreFeedDepth(page, lastCardCount);
+              lastCardCount = restoredCards.length;
+            }
           }
 
-          // ── Restore search page after detail extraction ───────────────────
-          // extractFromCard() always fires card.click(), which triggers a Maps
-          // SPA navigation. We check page.url() before restoring: if the URL
-          // already matches searchUrl (e.g. click fired but detail panel never
-          // opened, leaving the page on the search results), skip the goto()
-          // to avoid an unnecessary full feed reload.
-          //
-          // We use explicit goto(searchUrl) rather than goBack() because:
-          //   - goBack() relies on browser history state, which Maps does not
-          //     reliably populate for SPA transitions
-          //   - A direct URL request always produces a fully-rendered feed
-          let restored = true;
-          if (page.url() !== searchUrl) {
-            restored = await this._restoreSearchPage(page, searchUrl, i);
-          } else {
-            log.debug(`i=${i} URL unchanged — skipping restoration goto`);
-          }
-
-          if (!restored) {
-            // Could not restore the search page — the session may be broken
-            // (consent dialog, CAPTCHA, network error). Abort this batch.
-            // The cards processed so far have already been yielded; the run
-            // will end with a partial result set rather than crashing.
-            log.error(`search page restoration failed at i=${i} — aborting batch`);
-            break;
-          }
-
-          // Re-query cards after restoring feed depth.
-          // goto() resets scroll to top; _restoreFeedDepth scrolls until
-          // at least previousCardCount cards are rendered again (or bails out).
-          const freshCards = await this._restoreFeedDepth(page, previousCardCount);
-          log.debug(
-            `i=${i} post-restore cards: ${freshCards.length} (target: ${previousCardCount})`,
-          );
+          // Skip if extraction failed
+          if (payload === undefined) continue;
 
           // Derive a stable result ID — prefer Place ID, fall back to URL hash
           const resultId =
@@ -445,7 +390,6 @@ export class GoogleMapsProvider implements IBrowserProvider {
           // Skip duplicates within the same session
           if (seenPlaceIds.has(resultId)) continue;
           seenPlaceIds.add(resultId);
-
           totalYielded++;
 
           const resumeToken = buildResumeToken(
@@ -465,12 +409,6 @@ export class GoogleMapsProvider implements IBrowserProvider {
           };
 
           yield result;
-
-          // After yielding, update lastCardCount to the freshly-queried count
-          // so the outer loop doesn't re-process cards we already handled.
-          // Note: freshCards.length may differ from cards.length if Maps
-          // rendered additional results while we were on the detail panel.
-          lastCardCount = freshCards.length;
         }
 
         // After processing the current batch, scroll for more
@@ -490,43 +428,6 @@ export class GoogleMapsProvider implements IBrowserProvider {
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  /**
-   * Restores the search results page by navigating explicitly to the captured
-   * search URL, then waiting for the results feed to be ready.
-   *
-   * Returns true if the feed is present and ready for card queries.
-   * Returns false if navigation or the feed wait times out — caller should
-   * treat this as a non-recoverable batch error and stop processing.
-   *
-   * Why explicit goto() instead of goBack():
-   *   Google Maps is a SPA. When a card detail panel opens, Maps updates
-   *   the URL and re-renders the right panel in-place — it does NOT push a
-   *   clean history entry that goBack() can reliably reconstruct. The back
-   *   entry may resolve to an intermediate SPA state with no sidebar feed,
-   *   or trigger a consent/redirect interception on some sessions. A direct
-   *   goto() with the original search URL bypasses all of that: Maps always
-   *   constructs a full search results page from a direct URL request.
-   */
-  private async _restoreSearchPage(
-    page: import("playwright").Page,
-    searchUrl: string,
-    cardIndex: number,
-  ): Promise<boolean> {
-    try {
-      await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
-      await page.waitForSelector('div[role="feed"]', {
-        timeout: SEARCH_RESTORE_TIMEOUT_MS,
-      });
-      log.debug(`search page restored after card i=${cardIndex}`);
-      return true;
-    } catch (err) {
-      log.error(
-        `search page restoration failed after card i=${cardIndex}:`,
-        err instanceof Error ? err.message : String(err),
-      );
-      return false;
-    }
-  }
 
   /**
    * After restoring the search page via goto(), Maps resets the feed scroll
