@@ -286,9 +286,6 @@ export class GoogleMapsProvider implements IBrowserProvider {
     if (!pageResult.ok) throw pageResult.error;
     const page = pageResult.value;
 
-    // TEMP Phase 1 validation stats (remove after run)
-    const _p1Stats = { totalCardsSeen: 0, withHref: 0, withoutHref: 0, seenHrefs: new Set<string>(), duplicateHrefs: 0 };
-
     // --- MIGRATION STEP 1: yield counter visible in finally --------------
     // -----------------------------------------------------------------------
     try {
@@ -348,16 +345,6 @@ export class GoogleMapsProvider implements IBrowserProvider {
         for (let i = processFromIndex; i < cards.length && totalYielded < maxResults; i++) {
           const card = cards[i];
           if (card === undefined) continue;
-
-          // TEMP Phase 1 validation
-          _p1Stats.totalCardsSeen++;
-          const _p1Href = await this.adapter.getCardListingUrl(card);
-          if (_p1Href === undefined) {
-            _p1Stats.withoutHref++;
-          } else {
-            if (_p1Stats.seenHrefs.has(_p1Href)) { _p1Stats.duplicateHrefs++; } else { _p1Stats.seenHrefs.add(_p1Href); }
-            _p1Stats.withHref++;
-          }
 
           // Apply inter-request delay
           if (i > 0) {
@@ -488,8 +475,6 @@ export class GoogleMapsProvider implements IBrowserProvider {
         await humanDelay(SCROLL_SETTLE_MIN_MS, SCROLL_SETTLE_MAX_MS);
       }
     } finally {
-      // TEMP Phase 1 validation report
-      log.debug(`[phase1-stats] totalCardsSeen=${_p1Stats.totalCardsSeen} withHref=${_p1Stats.withHref} withoutHref=${_p1Stats.withoutHref} uniqueHrefs=${_p1Stats.seenHrefs.size} duplicateHrefs=${_p1Stats.duplicateHrefs}`);
       // Always close the page -- even if the generator was abandoned mid-run
       await page.close().catch(() => {
         /* ignore */
