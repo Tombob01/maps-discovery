@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @module providers/google-maps/GoogleMapsProvider
  *
  * Google Maps business discovery provider.
@@ -94,27 +94,27 @@ const MAX_EMPTY_SCROLL_ATTEMPTS = 4;
 
 /**
  * Maximum total scroll attempts when re-hydrating feed depth after search page restoration.
- * Each scroll typically loads ~9 additional cards; 5 attempts � ~9 cards = ~45 additional
+ * Each scroll typically loads ~9 additional cards; 5 attempts ï¿½ ~9 cards = ~45 additional
  * cards on top of the initial ~9, covering most real-world result sets.
  */
 const MAX_FEED_DEPTH_RESTORE_ATTEMPTS = 5;
 
 /**
  * How many consecutive scroll attempts that produce no new cards before giving up.
- * Google Maps lazy rendering is asynchronous � a single non-increasing scroll does NOT
+ * Google Maps lazy rendering is asynchronous ï¿½ a single non-increasing scroll does NOT
  * mean the feed is exhausted. Require this many stagnant scrolls before bailing out.
  */
 const MAX_FEED_DEPTH_STAGNANT_ATTEMPTS = 2;
 
 
 // ---------------------------------------------------------------------------
-// Resume cursor � what's stored in ResumeToken.pageRequest.cursor
+// Resume cursor ï¿½ what's stored in ResumeToken.pageRequest.cursor
 // ---------------------------------------------------------------------------
 
 interface GoogleMapsCursor {
-  /** IDs of results already yielded � used for identity-based resume. */
+  /** IDs of results already yielded ï¿½ used for identity-based resume. */
   readonly yieldedIds: readonly string[];
-  /** The search query text � used to verify the token is still valid. */
+  /** The search query text ï¿½ used to verify the token is still valid. */
   readonly queryHash: string;
 }
 
@@ -192,7 +192,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
   }
 
   // ---------------------------------------------------------------------------
-  // IBrowserProvider � lifecycle
+  // IBrowserProvider ï¿½ lifecycle
   // ---------------------------------------------------------------------------
 
   get browserReady(): boolean {
@@ -213,14 +213,14 @@ export class GoogleMapsProvider implements IBrowserProvider {
   }
 
   // ---------------------------------------------------------------------------
-  // IProvider � health check
+  // IProvider ï¿½ health check
   // ---------------------------------------------------------------------------
 
   async checkHealth(): Promise<ProviderHealth> {
     if (!this._browserReady) {
       return {
         status: "unavailable",
-        reason: "BROWSER_LAUNCH_FAILED: Browser not initialised � call initializeBrowser() first",
+        reason: "BROWSER_LAUNCH_FAILED: Browser not initialised ï¿½ call initializeBrowser() first",
       };
     }
     if (!this.browser.isReady) {
@@ -233,7 +233,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
   }
 
   // ---------------------------------------------------------------------------
-  // IProvider � shutdown
+  // IProvider ï¿½ shutdown
   // ---------------------------------------------------------------------------
 
   async shutdown(): Promise<void> {
@@ -241,7 +241,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
   }
 
   // ---------------------------------------------------------------------------
-  // IProvider � discover (async generator)
+  // IProvider ï¿½ discover (async generator)
   // ---------------------------------------------------------------------------
 
   async *discover(
@@ -253,7 +253,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
       throw ProviderError.fatal(
         "BROWSER_LAUNCH_FAILED",
         PROVIDER_ID,
-        "BROWSER_LAUNCH_FAILED: Browser not initialised � call initializeBrowser() before discover()",
+        "BROWSER_LAUNCH_FAILED: Browser not initialised ï¿½ call initializeBrowser() before discover()",
       );
     }
 
@@ -285,6 +285,9 @@ export class GoogleMapsProvider implements IBrowserProvider {
     const pageResult = await this.browser.newPage();
     if (!pageResult.ok) throw pageResult.error;
     const page = pageResult.value;
+
+    // TEMP Phase 1 validation stats (remove after run)
+    const _p1Stats = { totalCardsSeen: 0, withHref: 0, withoutHref: 0, seenHrefs: new Set<string>(), duplicateHrefs: 0 };
 
     // --- MIGRATION STEP 1: yield counter visible in finally --------------
     // -----------------------------------------------------------------------
@@ -335,7 +338,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
         }
 
         emptyScrolls = 0;
-        // processFromIndex must never exceed cardCount � if lastCardCount is
+        // processFromIndex must never exceed cardCount ï¿½ if lastCardCount is
         // higher than cardCount (feed collapsed after a deferred restoration),
         // clamping prevents the inner loop from starting past the array end
         // and silently running zero iterations, which would regress lastCardCount.
@@ -346,6 +349,16 @@ export class GoogleMapsProvider implements IBrowserProvider {
           const card = cards[i];
           if (card === undefined) continue;
 
+          // TEMP Phase 1 validation
+          _p1Stats.totalCardsSeen++;
+          const _p1Href = await this.adapter.getCardListingUrl(card);
+          if (_p1Href === undefined) {
+            _p1Stats.withoutHref++;
+          } else {
+            if (_p1Stats.seenHrefs.has(_p1Href)) { _p1Stats.duplicateHrefs++; } else { _p1Stats.seenHrefs.add(_p1Href); }
+            _p1Stats.withHref++;
+          }
+
           // Apply inter-request delay
           if (i > 0) {
             const delay =
@@ -354,12 +367,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
             await humanDelay(delay, delay + this.policy.rateLimit.jitterMs);
           }
 
-          let _diagDetached = false;
-          const _diagCardHref = await this.adapter.getCardListingUrl(card) ?? "none";
-          const _diagCardTitle = await card.evaluate((el) => (el as HTMLElement).getAttribute("aria-label") ?? el.textContent ?? "unknown").catch(() => "err");
-          try { await card.evaluate(() => {}); } catch { _diagDetached = true; }
-          log.debug(`[diag] i=${i} cardTitle=${_diagCardTitle} cardHref=${_diagCardHref} detached=${_diagDetached}`);
-          // Extract raw payload � may navigate away from search results
+          // Extract raw payload ï¿½ may navigate away from search results
           let payload: GoogleMapsRawPayload | undefined;
           try {
             payload = await this.adapter.extractFromCard(
@@ -368,31 +376,23 @@ export class GoogleMapsProvider implements IBrowserProvider {
               query.rawText,
               i + 1,
             );
-          } catch (_diagErr) {
-            // Extraction failed -- attempt restoration if URL changed, then skip card
-            log.debug(`[diag] i=${i} extractFromCard threw: ${_diagErr instanceof Error ? _diagErr.message : String(_diagErr)}`);
+          } catch (err) {
+            log.error(`i=${i} extractFromCard threw:`, err);
           }
 
           // Restore search results page if extractFromCard navigated away.
-          // Strategy: try goBack() first � preserves scroll depth and rendered cards.
+          // Strategy: try goBack() first ï¿½ preserves scroll depth and rendered cards.
           // If both goBack() attempts fail, break inner loop and defer to outer scroll loop.
           const currentUrl = page.url();
-          log.debug(`[diag] i=${i} post-extract url=${currentUrl} navigated=${currentUrl !== searchUrl}`);
-          log.debug(`[diag] i=${i} extractedBusiness=${payload?.name ?? payload?.placeId ?? "none"} cardHrefPlaceId=${_diagCardHref.match(/!19s(ChIJ[^!?&]+)/)?.[1] ?? _diagCardHref.match(/!1s(ChIJ[^!?&]+)/)?.[1] ?? "none"} destPlaceId=${currentUrl.match(/!1s(ChIJ[^!?&]+)/)?.[1] ?? currentUrl.match(/!19s(ChIJ[^!?&]+)/)?.[1] ?? "none"}`);
-          const _diagIsPlace = currentUrl.includes('/maps/place/');
-          const _diagIsSearch = currentUrl.includes('/maps/search/');
-          const _diagHasFeed = await page.$('div[role="feed"]').then(el => el !== null).catch(() => false);
-          const _diagHasPanel = await page.$('div[role="main"]').then(el => el !== null).catch(() => false);
-          log.debug(`[diag] i=${i} isPlace=${_diagIsPlace} isSearch=${_diagIsSearch} hasFeed=${_diagHasFeed} hasPanel=${_diagHasPanel}`);
           if (currentUrl !== searchUrl) {
             let restored = false;
             try {
               await page.goBack({ waitUntil: "domcontentloaded" });
               let feed = await page.waitForSelector('div[role="feed"]', { timeout: 5000 }).catch(() => null);
               if (feed === null) {
-                // Detail panel may have pushed two history entries � retry goBack() once
+                // Detail panel may have pushed two history entries ï¿½ retry goBack() once
                 // before treating restoration as failed and deferring to the outer scroll loop.
-                log.debug(`i=${i} goBack() landed without feed � retrying goBack()`);
+                log.debug(`i=${i} goBack() landed without feed ï¿½ retrying goBack()`);
                 await page.goBack({ waitUntil: "domcontentloaded" });
                 feed = await page.waitForSelector('div[role="feed"]', { timeout: 5000 }).catch(() => null);
                 if (feed !== null) {
@@ -403,28 +403,27 @@ export class GoogleMapsProvider implements IBrowserProvider {
                 restored = true;
                 log.debug(`i=${i} restored via goBack()`);
               }
-            } catch (_diagGoBackErr) {
-              // goBack failed � fall through to goto()
-              log.debug(`[diag] i=${i} goBack threw: ${_diagGoBackErr instanceof Error ? _diagGoBackErr.message : String(_diagGoBackErr)}`);
+            } catch (err) {
+              log.error(`i=${i} goBack threw:`, err);
             }
             if (!restored) {
               // Both goBack() attempts failed. The page is now in an unknown SPA
-              // state � not on the search feed. If we break here without resetting
+              // state ï¿½ not on the search feed. If we break here without resetting
               // the page, the outer loop calls getResultCards() on a non-feed page,
               // gets 0 cards, lastCardCount regresses to 0, and the stagnation
               // detector exits after MAX_EMPTY_SCROLL_ATTEMPTS.
               // Fix: silently navigate back to searchUrl so the outer loop lands
               // on the feed and can scroll correctly. Do NOT call _restoreFeedDepth
-              // and do NOT set restored=true � we are not recovering this card,
+              // and do NOT set restored=true ï¿½ we are not recovering this card,
               // just resetting the page for the outer loop.
-              log.debug(`i=${i} both goBack() attempts failed � resetting page for outer loop`);
+              log.debug(`i=${i} both goBack() attempts failed ï¿½ resetting page for outer loop`);
               try {
                 await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
                 await page.waitForSelector('div[role="feed"]', { timeout: 5000 });
                 log.debug(`i=${i} page reset to searchUrl for outer loop recovery`);
               } catch {
-                // Reset also failed � nothing we can do, break and let outer loop handle it
-                log.debug(`i=${i} page reset failed � breaking inner loop`);
+                // Reset also failed ï¿½ nothing we can do, break and let outer loop handle it
+                log.debug(`i=${i} page reset failed ï¿½ breaking inner loop`);
               }
               break;
             }
@@ -433,10 +432,10 @@ export class GoogleMapsProvider implements IBrowserProvider {
               log.debug(`post-restore i=${i} available=${_restoredCards.length} card_exists=${_restoredCards[i] !== undefined}`);
               if (_restoredCards[i] === undefined) {
                 // Feed shorter than current index after restoration.
-                // Do NOT update lastCardCount � keep it at its pre-extraction value
+                // Do NOT update lastCardCount ï¿½ keep it at its pre-extraction value
                 // so the outer scroll loop sees cardCount > lastCardCount after
                 // loading more cards and correctly processes the next batch.
-                log.debug(`i=${i} out of restored feed (${_restoredCards.length} cards) � deferring to outer scroll loop`);
+                log.debug(`i=${i} out of restored feed (${_restoredCards.length} cards) ï¿½ deferring to outer scroll loop`);
                 break;
               }
               // If goBack() restored more cards than the current batch had
@@ -445,7 +444,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
               // For mid-batch cards, leave lastCardCount unchanged so the outer
               // loop scrolls for more after the batch completes normally.
               if (_restoredCards.length > lastCardCount) {
-                log.debug(`post-restore feed grew: ${lastCardCount} -> ${_restoredCards.length} cards (lastCardCount unchanged � owned by outer loop)`);
+                log.debug(`post-restore feed grew: ${lastCardCount} -> ${_restoredCards.length} cards (lastCardCount unchanged ï¿½ owned by outer loop)`);
               }
             }
           }
@@ -453,7 +452,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
           // Skip if extraction failed
           if (payload === undefined) continue;
 
-          // Derive a stable result ID � prefer Place ID, fall back to URL hash
+          // Derive a stable result ID ï¿½ prefer Place ID, fall back to URL hash
           const resultId =
             payload.placeId ??
             this._syntheticId(payload.listingUrl ?? `position:${i}`);
@@ -484,30 +483,13 @@ export class GoogleMapsProvider implements IBrowserProvider {
         }
 
         // After processing the current batch, scroll for more
-        log.debug(`[post-batch] totalYielded=${totalYielded} lastCardCount=${lastCardCount} cards.length=${cards.length}`);
-        const _eorPostBatch = await this.browser.isEndOfResults(page);
-        log.debug(`[post-batch] isEndOfResults=${_eorPostBatch}`);
-        if (_eorPostBatch) {
-          // The live DOM may have grown during inner-loop restoration (e.g.
-          // _restoreFeedDepth loaded more cards than the current snapshot).
-          // Take a fresh card count before committing to the break: if the
-          // live feed already contains cards beyond this iteration's snapshot,
-          // the outer loop will catch them on its next iteration without
-          // an extra scroll. Suppressing the break here preserves all
-          // lastCardCount / processFromIndex invariants -- we are only
-          // deciding whether to exit, not touching any loop state.
-          const freshCards = await this.adapter.getResultCards(page);
-          if (freshCards.length > cards.length) {
-            log.debug(`[post-batch] feed grew during restoration (${cards.length} -> ${freshCards.length}) -- suppressing EOR break`);
-          } else {
-            log.debug(`[post-batch] BREAK terminating loop`);
-            break;
-          }
-        }
+        if (await this.browser.isEndOfResults(page)) break;
         await this.browser.scrollResultsSidebar(page);
         await humanDelay(SCROLL_SETTLE_MIN_MS, SCROLL_SETTLE_MAX_MS);
       }
     } finally {
+      // TEMP Phase 1 validation report
+      log.debug(`[phase1-stats] totalCardsSeen=${_p1Stats.totalCardsSeen} withHref=${_p1Stats.withHref} withoutHref=${_p1Stats.withoutHref} uniqueHrefs=${_p1Stats.seenHrefs.size} duplicateHrefs=${_p1Stats.duplicateHrefs}`);
       // Always close the page -- even if the generator was abandoned mid-run
       await page.close().catch(() => {
         /* ignore */
@@ -551,7 +533,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
     for (let attempt = 0; attempt < MAX_FEED_DEPTH_RESTORE_ATTEMPTS; attempt++) {
       await this.browser.scrollResultsSidebar(page);
       log.debug(`_restoreFeedDepth: scroll fired -- cards before wait=${currentCards.length}`);
-      // Use a slightly longer settle window after restoration � Maps lazy rendering
+      // Use a slightly longer settle window after restoration ï¿½ Maps lazy rendering
       // is slower after a full goto() than during normal incremental scrolling.
       await humanDelay(SCROLL_SETTLE_MAX_MS, SCROLL_SETTLE_MAX_MS + 500);
       log.debug(`_restoreFeedDepth: after wait -- cards before getResultCards=${currentCards.length}`);
