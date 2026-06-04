@@ -26,6 +26,7 @@ export interface MockElementHandle {
   getAttribute: (name: string) => Promise<string | null>;
   $: (selector: string) => Promise<MockElementHandle | null>;
   $$: (selector: string) => Promise<MockElementHandle[]>;
+  evaluate: (fn: (el: Element) => unknown) => Promise<unknown>;
 }
 
 export function makeMockElementHandle(
@@ -37,6 +38,7 @@ export function makeMockElementHandle(
     getAttribute: overrides.getAttribute ?? (async () => null),
     $: overrides.$ ?? (async () => null),
     $$: overrides.$$ ?? (async () => []),
+    evaluate: overrides.evaluate ?? (async () => null),
   };
 }
 
@@ -132,8 +134,7 @@ export interface MockAdapter {
     page: MockPage,
     card: MockElementHandle,
     query: string,
-    pos: number,
-  ) => Promise<GoogleMapsRawPayload>;
+    pos: number) => Promise<GoogleMapsRawPayload>;
 }
 
 export function makeMockAdapter(

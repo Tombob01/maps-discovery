@@ -29,15 +29,14 @@ interface CreateRunBody {
   niche: string;
   location: string;
 }
-
 interface ExecuteRunBody {
-  /** Provider ID string — resolved to a mock/real provider server-side */
+  /** Provider ID string - resolved to a mock/real provider server-side */
   provider: string;
-  /** Seed fields the frontend sends — no pre-built ResolvedQuery needed */
-  seed: {
+  /** One seed per selected keyword - all run sequentially under the same runId */
+  seeds: Array<{
     keyword: string;
     location: string;
-  };
+  }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,30 +133,57 @@ export function createServer(
     } catch {
       return c.json({ ok: false, error: { code: "INVALID_JSON", message: "Request body must be JSON" } }, 400);
     }
-
-    if (!body.seed?.keyword?.trim()) {
-      return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "seed.keyword is required" } }, 400);
+    if (!Array.isArray(body.seeds) || body.seeds.length === 0) {
+      return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "seeds must be a non-empty array" } }, 400);
     }
-    if (!body.seed?.location?.trim()) {
-      return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "seed.location is required" } }, 400);
+    for (const seed of body.seeds) {
+      if (!seed.keyword?.trim()) {
+        return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "each seed must have a keyword" } }, 400);
+      }
+      if (!seed.location?.trim()) {
+        return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "each seed must have a location" } }, 400);
+      }
     }
-
-    // Use the real GoogleMapsProvider when the frontend requests it and one
-    // was injected at startup. Fall back to the mock for any other provider
-    // ID or when no real provider is available (tests, CI).
     const provider: IProvider =
       body.provider === "google-maps" && googleMapsProvider !== undefined
         ? googleMapsProvider
         : buildMockProvider(body.provider ?? "mock");
-
+    let totalResultsSaved = 0;
+    let totalJobsEnqueued = 0;
+    let totalRecordsNormalized = 0;
+    let totalErrors = 0;
     try {
-      const summary = await facade.executeFromSeed({
-        provider: provider,
-        runId: runId as import("../core/types/common.js").RunID,
-        keyword: body.seed.keyword.trim(),
-        location: body.seed.location.trim(),
+      for (const seed of body.seeds) {
+        const summary = await facade.executeFromSeed({
+          provider,
+          runId: runId as import("../core/types/common.js").RunID,
+          keyword: seed.keyword.trim(),
+          location: seed.location.trim(),
+        });
+        totalResultsSaved    += summary.discovery.resultsSaved;
+        totalJobsEnqueued    += summary.discovery.jobsEnqueued;
+        totalRecordsNormalized += summary.normalization.recordsNormalized;
+        totalErrors          += summary.normalization.errors;
+      }
+      return c.json({
+        ok: true,
+        data: {
+          discovery: {
+            resultsSaved: totalResultsSaved,
+            jobsEnqueued: totalJobsEnqueued,
+          },
+          normalization: {
+            queriesGenerated: body.seeds.length,
+            queriesDispatched: body.seeds.length,
+            rawResultsFound: totalResultsSaved,
+            recordsNormalized: totalRecordsNormalized,
+            recordsUnique: totalRecordsNormalized,
+            recordsDuplicate: 0,
+            recordsExported: 0,
+            errors: totalErrors,
+          },
+        },
       });
-      return c.json({ ok: true, data: summary });
     } catch (err) {
       return c.json(
         { ok: false, error: { code: "EXECUTE_FAILED", message: err instanceof Error ? err.message : String(err) } },
@@ -256,3 +282,5 @@ function buildMockProvider(id: string): import("../core/interfaces/IProvider.js"
     },
   };
 }
+
+

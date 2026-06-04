@@ -5,7 +5,7 @@
  *
  * No real browser is launched. GoogleMapsBrowser and GoogleMapsAdapter are
  * replaced with vi.fn() mocks. Page is a plain object with jest/vitest spy
- * methods — matching the pattern used in the rest of the test suite.
+ * methods � matching the pattern used in the rest of the test suite.
  *
  * Coverage targets:
  *   - searchUrl is captured from page.url() immediately after navigateToSearch
@@ -22,7 +22,7 @@ import { describe, it, expect, vi, type MockInstance } from "vitest";
 import { GoogleMapsProvider } from "../../../../src/providers/google-maps/GoogleMapsProvider.js";
 
 // ---------------------------------------------------------------------------
-// Type aliases — keep test code readable
+// Type aliases � keep test code readable
 // ---------------------------------------------------------------------------
 
 type AnyFn = (...args: unknown[]) => unknown;
@@ -44,7 +44,7 @@ type MockFn = MockInstance<AnyFn>;
  *     simulating that the page navigated away during extraction
  *   - After restoration goto(): back to searchUrl
  * If urlSequence is not provided, url() always returns searchUrl (simulates
- * no navigation occurring — tests the URL-unchanged skip-goto path).
+ * no navigation occurring � tests the URL-unchanged skip-goto path).
  */
 function makeMockPage(
   searchUrl = "https://www.google.com/maps/search/plumber",
@@ -69,15 +69,16 @@ function makeMockPage(
     close: vi.fn().mockResolvedValue(undefined),
     // goBack should NOT be called by the new implementation
     goBack: vi.fn().mockResolvedValue(undefined),
+    $: vi.fn().mockResolvedValue(null),
   };
 }
 
 /**
  * Builds a minimal mock ElementHandle.
- * Content doesn't matter — the adapter mock returns payloads directly.
+ * Content doesn't matter � the adapter mock returns payloads directly.
  */
 function makeMockCard(id = "card-0") {
-  return { __mockCardId: id };
+  return { __mockCardId: id, evaluate: vi.fn().mockResolvedValue(null) };
 }
 
 /**
@@ -121,7 +122,7 @@ function makeQuery(overrides: Record<string, unknown> = {}) {
 
 function buildProvider(overrides: {
   pageUrl?: string;
-  /** URL the page reports during/after card extraction — simulates detail panel navigation. */
+  /** URL the page reports during/after card extraction � simulates detail panel navigation. */
   detailUrl?: string;
   cards?: object[][];          // array of card arrays returned by getResultCards on each call
   payloads?: object[];         // payloads returned by extractFromCard per card
@@ -154,7 +155,7 @@ function buildProvider(overrides: {
     return Promise.resolve(undefined);
   });
 
-  // ── Mock browser ──────────────────────────────────────────────────────────
+  // -- Mock browser ----------------------------------------------------------
   const mockBrowser = {
     launch: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
     newPage: vi.fn().mockResolvedValue({ ok: true, value: page }),
@@ -170,7 +171,7 @@ function buildProvider(overrides: {
     isReady: true,
   };
 
-  // ── Mock adapter ──────────────────────────────────────────────────────────
+  // -- Mock adapter ----------------------------------------------------------
   // getResultCards returns successive arrays from the `cards` list.
   // If exhausted, returns [].
   let getCardsCallCount = 0;
@@ -184,7 +185,8 @@ function buildProvider(overrides: {
       const payload = payloads.shift();
       if (payload === undefined) return Promise.reject(new Error("no payload"));
       return Promise.resolve(payload);
-    }),
+      }),
+    getCardListingUrl: vi.fn().mockResolvedValue('https://maps.google.com/place/test/!19sChIJtest'),
   };
 
   const policy = makePolicy();
@@ -221,7 +223,7 @@ async function collectResults(
 
 describe("GoogleMapsProvider.discover()", () => {
 
-  // ── URL capture ────────────────────────────────────────────────────────────
+  // -- URL capture ------------------------------------------------------------
 
   describe("search URL capture", () => {
     it("calls page.url() immediately after navigateToSearch to capture the search URL", async () => {
@@ -248,14 +250,14 @@ describe("GoogleMapsProvider.discover()", () => {
 
       await collectResults(provider.discover(makeQuery() as never));
 
-      // goBack() is now the primary restoration method — must have been called
+      // goBack() is now the primary restoration method � must have been called
       expect(page.goBack).toHaveBeenCalled();
     });
   });
 
-  // ── Happy path ─────────────────────────────────────────────────────────────
+  // -- Happy path -------------------------------------------------------------
 
-  describe("happy path — single card batch", () => {
+  describe("happy path � single card batch", () => {
     it("yields one result for one card", async () => {
       const { provider } = buildProvider({
         cards: [[makeMockCard("c0")], [makeMockCard("c0")], [], [], [], []],
@@ -313,7 +315,7 @@ describe("GoogleMapsProvider.discover()", () => {
     });
   });
 
-  // ── Search page restoration ────────────────────────────────────────────────
+  // -- Search page restoration ------------------------------------------------
 
   describe("search page restoration after detail extraction", () => {
     it("calls page.goto(searchUrl) after each card extraction when URL changed", async () => {
@@ -333,7 +335,7 @@ describe("GoogleMapsProvider.discover()", () => {
 
       await collectResults(provider.discover(makeQuery() as never));
 
-      // goBack() is primary restoration — should have been called once per card
+      // goBack() is primary restoration � should have been called once per card
       expect(page.goBack).toHaveBeenCalled();
     });
 
@@ -351,7 +353,7 @@ describe("GoogleMapsProvider.discover()", () => {
       expect(feedWaits.length).toBeGreaterThanOrEqual(1);
     });
 
-    it("re-queries cards after restoration — does not reuse stale handles", async () => {
+    it("re-queries cards after restoration � does not reuse stale handles", async () => {
       const card0 = makeMockCard("c0");
       const card1 = makeMockCard("c1");
       // First getResultCards call: initial batch with 2 cards
@@ -374,11 +376,11 @@ describe("GoogleMapsProvider.discover()", () => {
     });
   });
 
-  // ── URL-change guard ───────────────────────────────────────────────────────
+  // -- URL-change guard -------------------------------------------------------
 
-  describe("URL-change guard — skip restoration when page did not navigate", () => {
+  describe("URL-change guard � skip restoration when page did not navigate", () => {
     it("skips goto() when page.url() still equals searchUrl after extraction", async () => {
-      // No detailUrl — page.url() always returns searchUrl, simulating a case
+      // No detailUrl � page.url() always returns searchUrl, simulating a case
       // where extractFromCard's click did not trigger navigation
       // (e.g. detail panel opened inline without URL change, or click failed silently).
       const searchUrl = "https://www.google.com/maps/search/plumber";
@@ -394,7 +396,7 @@ describe("GoogleMapsProvider.discover()", () => {
 
       await collectResults(provider.discover(makeQuery() as never));
 
-      // goto should NOT have been called — URL never changed, no reload needed
+      // goto should NOT have been called � URL never changed, no reload needed
       expect(page.goto).not.toHaveBeenCalled();
     });
 
@@ -402,7 +404,7 @@ describe("GoogleMapsProvider.discover()", () => {
       const searchUrl = "https://www.google.com/maps/search/plumber";
       const detailUrl = "https://www.google.com/maps/place/AcmePlumbing/@1,2,17z";
 
-      // detailUrl is set — after the first url() call (capture), url() returns detailUrl
+      // detailUrl is set � after the first url() call (capture), url() returns detailUrl
       const { provider, page } = buildProvider({
         pageUrl: searchUrl,
         detailUrl,
@@ -418,7 +420,7 @@ describe("GoogleMapsProvider.discover()", () => {
 
     it("skips goto() on extraction failure when URL is unchanged", async () => {
       const searchUrl = "https://www.google.com/maps/search/plumber";
-      const page = makeMockPage(searchUrl); // no detailUrl — url() always returns searchUrl
+      const page = makeMockPage(searchUrl); // no detailUrl � url() always returns searchUrl
       (page.url as ReturnType<typeof vi.fn>).mockReturnValue(searchUrl);
 
       const mockBrowser = {
@@ -439,6 +441,7 @@ describe("GoogleMapsProvider.discover()", () => {
           return Promise.resolve(batches[cardsCount++] ?? []);
         }),
         extractFromCard: vi.fn().mockRejectedValue(new Error("click failed before nav")),
+        getCardListingUrl: vi.fn().mockResolvedValue('https://maps.google.com/place/test/!19sChIJtest'),
       };
 
       const provider = new GoogleMapsProvider(
@@ -450,29 +453,29 @@ describe("GoogleMapsProvider.discover()", () => {
 
       await collectResults(provider.discover(makeQuery() as never));
 
-      // Extraction failed but URL didn't change → goto should NOT be called
+      // Extraction failed but URL didn't change ? goto should NOT be called
       expect(page.goto).not.toHaveBeenCalled();
     });
   });
 
-  // ── Restoration failure ────────────────────────────────────────────────────
+  // -- Restoration failure ----------------------------------------------------
 
   describe("restoration failure handling", () => {
-    it("does not throw when restoration fails — aborts batch gracefully", async () => {
+    it("does not throw when restoration fails � aborts batch gracefully", async () => {
       const { provider } = buildProvider({
         cards: [[makeMockCard("c0"), makeMockCard("c1")], []],
         payloads: [makePayload("ChIJ_A"), makePayload("ChIJ_B")],
         restoreFails: true,
       });
 
-      // Should not throw — restoration failure is non-fatal
+      // Should not throw � restoration failure is non-fatal
       await expect(
         collectResults(provider.discover(makeQuery() as never)),
       ).resolves.toBeDefined();
     });
 
     it("still yields cards extracted before the restoration failure", async () => {
-      // card0 is extracted successfully; restoration then fails → batch aborts
+      // card0 is extracted successfully; restoration then fails ? batch aborts
       // card1 is never extracted
       const { provider } = buildProvider({
         cards: [[makeMockCard("c0"), makeMockCard("c1")], []],
@@ -482,7 +485,7 @@ describe("GoogleMapsProvider.discover()", () => {
 
       // Note: with restoreFails, card0 extraction succeeds but restoration
       // fails, so card0 result is NOT yielded (restoration is a prerequisite
-      // for yield — the yield happens after successful restoration).
+      // for yield � the yield happens after successful restoration).
       // The run ends with 0 results but no crash.
       const results = await collectResults(provider.discover(makeQuery() as never));
 
@@ -503,7 +506,7 @@ describe("GoogleMapsProvider.discover()", () => {
     });
   });
 
-  // ── Extraction failure ─────────────────────────────────────────────────────
+  // -- Extraction failure -----------------------------------------------------
 
   describe("extraction failure handling", () => {
     it("skips a card if extractFromCard throws, then continues", async () => {
@@ -539,8 +542,8 @@ describe("GoogleMapsProvider.discover()", () => {
         extractFromCard: vi.fn()
           .mockRejectedValueOnce(new Error("DOM detached"))  // card0 fails
           .mockResolvedValueOnce(makePayload("ChIJ_B")),      // card1 succeeds
+        getCardListingUrl: vi.fn().mockResolvedValue('https://maps.google.com/place/test/!19sChIJtest'),
       };
-
       const provider = new GoogleMapsProvider(
         makePolicy() as never,
         mockBrowser as never,
@@ -586,23 +589,21 @@ describe("GoogleMapsProvider.discover()", () => {
           return Promise.resolve(batches[cardsCount++] ?? []);
         }),
         extractFromCard: vi.fn().mockRejectedValue(new Error("extract failed")),
+        getCardListingUrl: vi.fn().mockResolvedValue('https://maps.google.com/place/test/!19sChIJtest'),
       };
-
       const provider = new GoogleMapsProvider(
         makePolicy() as never,
         mockBrowser as never,
         mockAdapter as never,
       );
       (provider as unknown as { _browserReady: boolean })._browserReady = true;
-
       await collectResults(provider.discover(makeQuery() as never));
-
       // goBack() should have been called for restoration even though extraction failed
       expect(page.goBack).toHaveBeenCalled();
     });
   });
 
-  // ── Deduplication ──────────────────────────────────────────────────────────
+  // -- Deduplication ----------------------------------------------------------
 
   describe("deduplication", () => {
     it("does not yield the same placeId twice in one session", async () => {
@@ -638,15 +639,15 @@ describe("GoogleMapsProvider.discover()", () => {
         extractFromCard: vi.fn()
           .mockResolvedValueOnce(makePayload("ChIJ_SAME"))
           .mockResolvedValueOnce(makePayload("ChIJ_SAME")), // duplicate payload
+        getCardListingUrl: vi.fn().mockResolvedValue('https://maps.google.com/place/test/!19sChIJtest'),
       };
-
       const provider = new GoogleMapsProvider(
         makePolicy() as never,
         mockBrowser as never,
         mockAdapter as never,
       );
-      (provider as unknown as { _browserReady: boolean })._browserReady = true;
 
+      (provider as unknown as { _browserReady: boolean })._browserReady = true;
       const results = await collectResults(provider.discover(makeQuery() as never));
 
       // Only one result despite two extractions returning the same placeId
@@ -655,7 +656,7 @@ describe("GoogleMapsProvider.discover()", () => {
     });
   });
 
-  // ── Page lifecycle ─────────────────────────────────────────────────────────
+  // -- Page lifecycle ---------------------------------------------------------
 
   describe("page lifecycle", () => {
     it("always closes the page in the finally block on normal completion", async () => {
@@ -694,7 +695,7 @@ describe("GoogleMapsProvider.discover()", () => {
     });
   });
 
-  // ── Browser not ready guard ────────────────────────────────────────────────
+  // -- Browser not ready guard ------------------------------------------------
 
   describe("browser not ready guard", () => {
     it("throws BROWSER_LAUNCH_FAILED if browserReady is false", async () => {
@@ -707,7 +708,7 @@ describe("GoogleMapsProvider.discover()", () => {
     });
   });
 
-  // ── goBack is never called ─────────────────────────────────────────────────
+  // -- goBack is never called -------------------------------------------------
 
   describe("goBack is primary restoration method", () => {
     it("calls page.goBack() for restoration after each card extraction", async () => {
@@ -716,7 +717,7 @@ describe("GoogleMapsProvider.discover()", () => {
       const c2 = makeMockCard("c2");
       const { provider, page } = buildProvider({
         // post-restore batches return 3 cards each so _restoreFeedDepth exits
-        // immediately (target met on first check) — no real humanDelay fires.
+        // immediately (target met on first check) � no real humanDelay fires.
         cards: [
           [c0, c1, c2],  // initial batch
           [c0, c1, c2],  // post-restore card0
@@ -736,14 +737,14 @@ describe("GoogleMapsProvider.discover()", () => {
       expect(page.goBack).toHaveBeenCalled();
     });
   });
-  // ── Feed depth restoration ──────────────────────────────────────────────────
+  // -- Feed depth restoration --------------------------------------------------
 
   describe("_restoreFeedDepth after search page restoration", () => {
     it("returns cards immediately if feed already meets target count", async () => {
       // detailUrl ensures URL guard fires and _restoreSearchPage is called,
       // then _restoreFeedDepth is called with targetCount = 1 card.
       // The first getResultCards call inside _restoreFeedDepth returns 1 card
-      // straight away — no scroll should be needed.
+      // straight away � no scroll should be needed.
       const searchUrl = "https://www.google.com/maps/search/plumber";
       const detailUrl = "https://www.google.com/maps/place/AcmePlumbing/@1,2,17z";
       const { provider, mockAdapter, mockBrowser } = buildProvider({
@@ -809,8 +810,8 @@ describe("GoogleMapsProvider.discover()", () => {
         extractFromCard: vi.fn()
           .mockResolvedValueOnce(makePayload("ChIJ_A"))
           .mockResolvedValueOnce(makePayload("ChIJ_B")),
+        getCardListingUrl: vi.fn().mockResolvedValue('https://maps.google.com/place/test/!19sChIJtest'),
       };
-
       const provider = new GoogleMapsProvider(
         makePolicy() as never,
         mockBrowser as never,
@@ -819,7 +820,6 @@ describe("GoogleMapsProvider.discover()", () => {
       (provider as unknown as { _browserReady: boolean })._browserReady = true;
 
       const results = await collectResults(provider.discover(makeQuery() as never));
-
       // Both cards should be yielded
       expect(results).toHaveLength(2);
 

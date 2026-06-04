@@ -217,16 +217,16 @@ export const httpClient: IRuntimeFacade = {
   },
 
   async executeRun(params: ExecuteRunParams): Promise<ExecutionSummary> {
+    const seeds = params.keywords.length > 0
+      ? params.keywords.map(kw => ({ keyword: kw, location: params.query.location }))
+      : [{ keyword: params.query.niche, location: params.query.location }];
     const data = await apiFetch<BackendExecutionSummary>(
       `/api/runs/${params.runId}/execute`,
       {
         method: 'POST',
         body: JSON.stringify({
           provider: params.provider,
-          seed: {
-            keyword: params.query.niche,
-            location: params.query.location,
-          },
+          seeds,
         }),
       },
     );
@@ -245,3 +245,4 @@ export const httpClient: IRuntimeFacade = {
     return data.items.map(toUIRecord);
   },
 };
+

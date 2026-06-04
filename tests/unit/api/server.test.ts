@@ -243,7 +243,7 @@ describe("POST /api/runs/:id/execute", () => {
     const app = createServer(facade);
     const res = await request(app, "POST", "/api/runs/run-test-001/execute", {
       provider: "mock",
-      seed: { keyword: "plumbers", location: "Austin TX" },
+      seeds: [{ keyword: "plumbers", location: "Austin TX" }],
     });
     const body = await res.json() as { ok: boolean; data: unknown };
 
@@ -256,7 +256,7 @@ describe("POST /api/runs/:id/execute", () => {
     const app = createServer(facade);
     await request(app, "POST", "/api/runs/run-abc/execute", {
       provider: "google-maps",
-      seed: { keyword: "dentists", location: "Lagos, Nigeria" },
+      seeds: [{ keyword: "dentists", location: "Lagos, Nigeria" }],
     });
     expect(facade.executeFromSeed).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -270,7 +270,7 @@ describe("POST /api/runs/:id/execute", () => {
     const app = createServer(facade);
     const res = await request(app, "POST", "/api/runs/run-001/execute", {
       provider: "mock",
-      seed: { location: "Austin TX" },
+      seeds: [{ keyword: "", location: "Austin TX" }],
     });
     expect(res.status).toBe(400);
   });
@@ -279,7 +279,7 @@ describe("POST /api/runs/:id/execute", () => {
     const app = createServer(facade);
     const res = await request(app, "POST", "/api/runs/run-001/execute", {
       provider: "mock",
-      seed: { keyword: "plumbers" },
+      seeds: [{ keyword: "plumbers", location: "" }],
     });
     expect(res.status).toBe(400);
   });

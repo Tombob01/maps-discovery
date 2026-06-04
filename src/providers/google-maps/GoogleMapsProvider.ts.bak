@@ -354,11 +354,6 @@ export class GoogleMapsProvider implements IBrowserProvider {
             await humanDelay(delay, delay + this.policy.rateLimit.jitterMs);
           }
 
-          let _diagDetached = false;
-          const _diagCardHref = await this.adapter.getCardListingUrl(card) ?? "none";
-          const _diagCardTitle = await card.evaluate((el) => (el as HTMLElement).getAttribute("aria-label") ?? el.textContent ?? "unknown").catch(() => "err");
-          try { await card.evaluate(() => {}); } catch { _diagDetached = true; }
-          log.debug(`[diag] i=${i} cardTitle=${_diagCardTitle} cardHref=${_diagCardHref} detached=${_diagDetached}`);
           // Extract raw payload � may navigate away from search results
           let payload: GoogleMapsRawPayload | undefined;
           try {
@@ -368,22 +363,14 @@ export class GoogleMapsProvider implements IBrowserProvider {
               query.rawText,
               i + 1,
             );
-          } catch (_diagErr) {
+          } catch {
             // Extraction failed -- attempt restoration if URL changed, then skip card
-            log.debug(`[diag] i=${i} extractFromCard threw: ${_diagErr instanceof Error ? _diagErr.message : String(_diagErr)}`);
           }
 
           // Restore search results page if extractFromCard navigated away.
           // Strategy: try goBack() first � preserves scroll depth and rendered cards.
           // If both goBack() attempts fail, break inner loop and defer to outer scroll loop.
           const currentUrl = page.url();
-          log.debug(`[diag] i=${i} post-extract url=${currentUrl} navigated=${currentUrl !== searchUrl}`);
-          log.debug(`[diag] i=${i} extractedBusiness=${payload?.name ?? payload?.placeId ?? "none"} cardHrefPlaceId=${_diagCardHref.match(/!19s(ChIJ[^!?&]+)/)?.[1] ?? _diagCardHref.match(/!1s(ChIJ[^!?&]+)/)?.[1] ?? "none"} destPlaceId=${currentUrl.match(/!1s(ChIJ[^!?&]+)/)?.[1] ?? currentUrl.match(/!19s(ChIJ[^!?&]+)/)?.[1] ?? "none"}`);
-          const _diagIsPlace = currentUrl.includes('/maps/place/');
-          const _diagIsSearch = currentUrl.includes('/maps/search/');
-          const _diagHasFeed = await page.$('div[role="feed"]').then(el => el !== null).catch(() => false);
-          const _diagHasPanel = await page.$('div[role="main"]').then(el => el !== null).catch(() => false);
-          log.debug(`[diag] i=${i} isPlace=${_diagIsPlace} isSearch=${_diagIsSearch} hasFeed=${_diagHasFeed} hasPanel=${_diagHasPanel}`);
           if (currentUrl !== searchUrl) {
             let restored = false;
             try {
@@ -403,9 +390,8 @@ export class GoogleMapsProvider implements IBrowserProvider {
                 restored = true;
                 log.debug(`i=${i} restored via goBack()`);
               }
-            } catch (_diagGoBackErr) {
+            } catch {
               // goBack failed � fall through to goto()
-              log.debug(`[diag] i=${i} goBack threw: ${_diagGoBackErr instanceof Error ? _diagGoBackErr.message : String(_diagGoBackErr)}`);
             }
             if (!restored) {
               // Both goBack() attempts failed. The page is now in an unknown SPA

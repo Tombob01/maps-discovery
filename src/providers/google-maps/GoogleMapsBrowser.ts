@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @module providers/google-maps/GoogleMapsBrowser
  *
  * Manages the Playwright Chromium browser lifecycle for Google Maps scraping.
@@ -109,6 +109,53 @@ export async function withRetry<T>(
   }
 
   throw lastError;
+}
+
+/**
+ * Retries an async operation that returns Result<T, ProviderError>.
+ *
+ * Retry policy:
+ *   - result.ok === true                            -> return immediately
+ *   - result.ok === false, error.isRetryable true   -> wait and retry
+ *   - result.ok === false, error.isRetryable false  -> return immediately (fatal)
+ *   - thrown exception                              -> propagates without retry
+ *
+ * Backoff arithmetic mirrors withRetry() exactly:
+ * rawDelay = baseDelayMs * 2^(attempt-1), capped at capMs, jittered up to 20%.
+ */
+export async function withRetryResult<T>(
+  operation: () => Promise<Result<T, ProviderError>>,
+  maxAttempts: number,
+  baseDelayMs: number,
+  capMs: number,
+  _label: string,
+): Promise<Result<T, ProviderError>> {
+  let lastResult: Result<T, ProviderError> | undefined;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await operation();
+
+    if (result.ok) return result;
+
+    lastResult = result;
+
+    // Fatal errors are not retried — return immediately
+    if (!result.error.isRetryable) return result;
+
+    if (attempt === maxAttempts) break;
+
+    const rawDelay = baseDelayMs * Math.pow(2, attempt - 1);
+    const delay = Math.min(rawDelay, capMs);
+    const jitter = Math.floor(Math.random() * Math.floor(delay * 0.2));
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, delay + jitter),
+    );
+  }
+
+  // lastResult is always assigned: loop only breaks after a retryable
+  // failure with attempt === maxAttempts. All other paths return early.
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  return lastResult!;
 }
 
 // ---------------------------------------------------------------------------

@@ -194,6 +194,7 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
             niche: state.keyword,
             location: state.location,
           },
+          keywords: state.selectedKeywords,
         }).then(summary => {
           console.log('[startRun] executeRun resolved, resultsFound:', summary.discovery.resultsFound, 'normalized:', summary.normalization.processed);
           addEvent(
@@ -254,3 +255,4 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
     },
   };
 }
+

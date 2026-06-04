@@ -37,6 +37,8 @@ export interface ExecuteRunParams {
   provider: string;
   runId: string;
   query: UIResolvedQuery;
+  /** All selected keywords from Step 1 - first entry is the seed keyword */
+  keywords: string[];
 }
 
 export interface DiscoveryStats {
@@ -172,3 +174,4 @@ export const mockFacade: IRuntimeFacade = {
     return delay(500, [...MOCK_RECORDS]);
   },
 };
+

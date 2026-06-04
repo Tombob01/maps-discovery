@@ -123,7 +123,7 @@ describe("createServer provider selection — POST /api/runs/:id/execute", () =>
 
     await executeRequest(app, "run-001", {
       provider: "google-maps",
-      seed: { keyword: "dentists", location: "Lagos" },
+      seeds: [{ keyword: "dentists", location: "Lagos" }],
     });
 
     expect(facade.executeFromSeed).toHaveBeenCalledOnce();
@@ -139,7 +139,7 @@ describe("createServer provider selection — POST /api/runs/:id/execute", () =>
 
     await executeRequest(app, "run-002", {
       provider: "mock",
-      seed: { keyword: "plumbers", location: "Austin TX" },
+      seeds: [{ keyword: "plumbers", location: "Austin TX" }],
     });
 
     expect(facade.executeFromSeed).toHaveBeenCalledOnce();
@@ -155,7 +155,7 @@ describe("createServer provider selection — POST /api/runs/:id/execute", () =>
 
     await executeRequest(app, "run-003", {
       provider: "google-maps",
-      seed: { keyword: "lawyers", location: "Ibadan" },
+      seeds: [{ keyword: "lawyers", location: "Ibadan" }],
     });
 
     expect(facade.executeFromSeed).toHaveBeenCalledOnce();
@@ -171,7 +171,7 @@ describe("createServer provider selection — POST /api/runs/:id/execute", () =>
 
     await executeRequest(app, "run-004", {
       provider: "google-maps",
-      seed: { keyword: "  restaurants  ", location: "  Abuja  " },
+      seeds: [{ keyword: "  restaurants  ", location: "  Abuja  " }],
     });
 
     const call = vi.mocked(facade.executeFromSeed).mock.calls[0]![0];

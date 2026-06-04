@@ -1,0 +1,1321 @@
+import { useCallback, useReducer } from 'react';
+import type {
+  IRuntimeFacade,
+  DiscoveryFlowState,
+  FlowStep,
+  Phase,
+  RunStatus,
+  EventEntry,
+  EventLevel,
+  BusinessRecord,
+  RunStats,
+} from '../types/ui';
+
+// ─── State shape & reducer ───────────────────────────────────────────────────
+
+type Action =
+  | { type: 'SET_KEYWORD'; keyword: string }
+  | { type: 'SET_LOCATION'; location: string }
+  | { type: 'SET_PHASE'; phase: Phase }
+  | { type: 'SET_STEP'; step: FlowStep }
+  | { type: 'SET_ERROR'; error: string }
+  | { type: 'SET_SUGGESTIONS'; suggestions: string[] }
+  | { type: 'TOGGLE_KEYWORD'; keyword: string }
+  | { type: 'SET_RUN_ID'; runId: string }
+  | { type: 'SET_RUN_STATUS'; status: RunStatus }
+  | { type: 'SET_PROGRESS'; progress: number }
+  | { type: 'ADD_EVENT'; entry: EventEntry }
+  | { type: 'SET_RECORDS'; records: BusinessRecord[] }
+  | { type: 'SET_STATS'; stats: RunStats };
+
+const initialState: DiscoveryFlowState = {
+  step: 'expand',
+  phase: 'idle',
+  keyword: '',
+  location: 'Austin TX',
+  suggestions: [],
+  selectedKeywords: [],
+  runId: null,
+  runStatus: 'pending',
+  progress: 0,
+  events: [],
+  records: [],
+  stats: null,
+  error: null,
+};
+
+function reducer(state: DiscoveryFlowState, action: Action): DiscoveryFlowState {
+  switch (action.type) {
+    case 'SET_KEYWORD':
+      return { ...state, keyword: action.keyword };
+    case 'SET_LOCATION':
+      return { ...state, location: action.location };
+    case 'SET_PHASE':
+      return { ...state, phase: action.phase };
+    case 'SET_STEP':
+      return { ...state, step: action.step };
+    case 'SET_ERROR':
+      return { ...state, phase: 'error', error: action.error };
+    case 'SET_SUGGESTIONS':
+      return { ...state, suggestions: action.suggestions, phase: 'done', error: null };
+    case 'TOGGLE_KEYWORD': {
+      const has = state.selectedKeywords.includes(action.keyword);
+      return {
+        ...state,
+        selectedKeywords: has
+          ? state.selectedKeywords.filter(k => k !== action.keyword)
+          : [...state.selectedKeywords, action.keyword],
+      };
+    }
+    case 'SET_RUN_ID':
+      return { ...state, runId: action.runId };
+    case 'SET_RUN_STATUS':
+      return { ...state, runStatus: action.status };
+    case 'SET_PROGRESS':
+      return { ...state, progress: action.progress };
+    case 'ADD_EVENT':
+      return { ...state, events: [...state.events, action.entry] };
+    case 'SET_RECORDS':
+      return { ...state, records: action.records };
+    case 'SET_STATS':
+      return { ...state, stats: action.stats };
+    default:
+      return state;
+  }
+}
+
+// ─── Hook ────────────────────────────────────────────────────────────────────
+
+export interface DiscoveryFlowActions {
+  setKeyword: (keyword: string) => void;
+  setLocation: (location: string) => void;
+  toggleKeyword: (keyword: string) => void;
+  goToSelect: () => void;
+  goToExpand: () => void;
+  expandKeyword: () => void;
+  startRun: () => void;
+}
+
+export interface UseDiscoveryFlowReturn {
+  state: DiscoveryFlowState;
+  actions: DiscoveryFlowActions;
+}
+
+export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn {
+  const [state, dispatch] = useReducer(reducer, initialState);
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  function ts(): string {
+    return new Date().toLocaleTimeString('en-US', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  }
+
+  function addEvent(msg: string, level: EventLevel = 'info'): void {
+    dispatch({ type: 'ADD_EVENT', entry: { time: ts(), msg, level } });
+  }
+
+  // ── Actions ──────────────────────────────────────────────────────────────
+
+  const setKeyword = useCallback((keyword: string) => {
+    dispatch({ type: 'SET_KEYWORD', keyword });
+  }, []);
+
+  const setLocation = useCallback((location: string) => {
+    dispatch({ type: 'SET_LOCATION', location });
+  }, []);
+
+  const toggleKeyword = useCallback((keyword: string) => {
+    dispatch({ type: 'TOGGLE_KEYWORD', keyword });
+  }, []);
+
+  const goToSelect = useCallback(() => {
+    dispatch({ type: 'SET_STEP', step: 'select' });
+  }, []);
+
+  const goToExpand = useCallback(() => {
+    dispatch({ type: 'SET_STEP', step: 'expand' });
+  }, []);
+
+  const expandKeyword = useCallback(() => {
+    if (!state.keyword.trim()) return;
+
+    dispatch({ type: 'SET_PHASE', phase: 'loading' });
+    dispatch({ type: 'SET_ERROR', error: '' });
+    addEvent(`expanding keyword: "${state.keyword}"`, 'info');
+
+    facade
+      .expandKeyword({
+        keyword: state.keyword,
+        ...(state.location ? { location: state.location } : {}),
+        limit: 8,
+      })
+      .then(res => {
+        addEvent(`${res.suggestions.length} suggestions returned`, 'ok');
+        dispatch({ type: 'SET_SUGGESTIONS', suggestions: res.suggestions });
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : 'Expansion failed';
+        addEvent(msg, 'err');
+        dispatch({ type: 'SET_ERROR', error: msg });
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facade, state.keyword, state.location]);
+
+  // Expansion NEVER auto-runs discovery — startRun is an entirely separate action.
+  const startRun = useCallback(() => {
+    if (state.selectedKeywords.length === 0) return;
+
+    dispatch({ type: 'SET_PHASE', phase: 'loading' });
+    dispatch({ type: 'SET_RUN_STATUS', status: 'pending' });
+    dispatch({ type: 'SET_PROGRESS', progress: 0 });
+    addEvent('creating run…', 'info');
+
+    facade
+      .createRun({ niche: state.keyword, location: state.location })
+      .then(({ runId }) => {
+        console.log('[startRun] createRun resolved, runId:', runId);
+        addEvent(`run created: ${runId}`, 'ok');
+        dispatch({ type: 'SET_RUN_ID', runId });
+        dispatch({ type: 'SET_RUN_STATUS', status: 'running' });
+        dispatch({ type: 'SET_PROGRESS', progress: 20 });
+        dispatch({ type: 'SET_STEP', step: 'run' });
+        addEvent('executing discovery…', 'info');
+
+        console.log('[startRun] calling executeRun, runId:', runId);
+        return facade.executeRun({
+          provider: 'google-maps',
+          runId,
+          query: {
+            niche: state.keyword,
+            location: state.location,
+          },
+        }).then(summary => {
+          console.log('[startRun] executeRun resolved, resultsFound:', summary.discovery.resultsFound, 'normalized:', summary.normalization.processed);
+          addEvent(
+            `discovery done – ${summary.discovery.resultsFound} results, ` +
+            `${summary.normalization.processed} normalized`,
+            'ok',
+          );
+          dispatch({ type: 'SET_PROGRESS', progress: 70 });
+          console.log('[startRun] calling getRun, runId:', runId);
+          return facade.getRun(runId);
+        });
+      })
+      .then(run => {
+        console.log('[startRun] getRun resolved, status:', run.status, 'id:', run.id);
+        dispatch({ type: 'SET_RUN_STATUS', status: run.status });
+        dispatch({ type: 'SET_STATS', stats: run.stats });
+        dispatch({ type: 'SET_PROGRESS', progress: 90 });
+        addEvent('fetching records…', 'info');
+        return facade.listRecords(run.id);
+      })
+      .then(records => {
+        addEvent(`${records.length} records loaded`, 'ok');
+        dispatch({ type: 'SET_RECORDS', records });
+        dispatch({ type: 'SET_PHASE', phase: 'done' });
+        dispatch({ type: 'SET_PROGRESS', progress: 100 });
+        dispatch({ type: 'SET_STEP', step: 'results' });
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : 'Run failed';
+        addEvent(`run failed: ${msg}`, 'err');
+        dispatch({ type: 'SET_RUN_STATUS', status: 'failed' });
+        dispatch({ type: 'SET_ERROR', error: msg });
+        // Still attempt to load whatever records were inserted before the failure.
+        // runId is captured from createRun above — safe to use even after rejection.
+        if (state.runId !== null) {
+          facade.listRecords(state.runId).then(records => {
+            if (records.length > 0) {
+              addEvent(`${records.length} records loaded (partial run)`, 'ok');
+              dispatch({ type: 'SET_RECORDS', records });
+              dispatch({ type: 'SET_STEP', step: 'results' });
+            }
+          }).catch(() => { /* listRecords failed — no records to show */ });
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facade, state.keyword, state.location, state.selectedKeywords]);
+
+  return {
+    state,
+    actions: {
+      setKeyword,
+      setLocation,
+      toggleKeyword,
+      goToSelect,
+      goToExpand,
+      expandKeyword,
+      startRun,
+    },
+  };
+}
+/**
+ * @module ui/lib/httpClient
+ * Implements IRuntimeFacade via fetch() against the Hono HTTP server.
+ *
+ * Maps between the UI's simplified types and the backend's richer shapes.
+ * No business logic — pure adapter.
+ */
+
+import type {
+  IRuntimeFacade,
+  ExpandKeywordParams,
+  ExpansionResponse,
+  CreateRunParams,
+  CreateRunResult,
+  ExecuteRunParams,
+  ExecutionSummary,
+  Run,
+  BusinessRecord,
+} from '../types/ui';
+
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const API_BASE: string = (import.meta as any).env?.['VITE_API_BASE'] ?? 'http://localhost:3001';
+
+// ---------------------------------------------------------------------------
+// Error type
+// ---------------------------------------------------------------------------
+
+export class ApiError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helper: fetch + parse + throw on non-2xx
+// ---------------------------------------------------------------------------
+
+interface ApiOkResponse<T> {
+  ok: true;
+  data: T;
+}
+
+interface ApiErrResponse {
+  ok: false;
+  error: { code: string; message: string };
+}
+
+type ApiResult<T> = ApiOkResponse<T> | ApiErrResponse;
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  const body = (await res.json()) as ApiResult<T>;
+
+  if (!body.ok) {
+    throw new ApiError(body.error.code, body.error.message, res.status);
+  }
+
+  return body.data;
+}
+
+// ---------------------------------------------------------------------------
+// Backend response shapes (richer than UI types — mapped below)
+// ---------------------------------------------------------------------------
+
+interface BackendExpandedKeyword {
+  keyword: string;
+  popularity: string;
+  category: string;
+}
+
+interface BackendExpansionResponse {
+  original: string;
+  suggestions: BackendExpandedKeyword[];
+}
+
+interface BackendRun {
+  id: string;
+  status: string;
+  niche: string;
+  location: string;
+  startedAt: string;
+  completedAt: string | null;
+  stats: {
+    queriesGenerated: number;
+    queriesDispatched: number;
+    rawResultsFound: number;
+    recordsNormalized: number;
+    recordsUnique: number;
+    recordsDuplicate: number;
+    recordsExported: number;
+    errors: number;
+  };
+}
+
+interface BackendRecord {
+  id: string;
+  name: string;
+  phone: string | null;
+  normalizedPhone: string | null;
+  website: string | null;
+  city: string | null;
+  country: string | null;
+  primaryCategory: string | null;
+  rating: number | null;
+  sourceProvider: string;
+}
+
+interface BackendRecordPage {
+  items: BackendRecord[];
+  total: number;
+  page: number;
+  hasMore: boolean;
+}
+
+interface BackendExecutionSummary {
+  discovery: { resultsSaved: number; jobsEnqueued: number };
+  normalization: {
+    queriesGenerated: number;
+    queriesDispatched: number;
+    rawResultsFound: number;
+    recordsNormalized: number;
+    recordsUnique: number;
+    recordsDuplicate: number;
+    recordsExported: number;
+    errors: number;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Mappers: backend → UI types
+// ---------------------------------------------------------------------------
+
+function toUISuggestions(backend: BackendExpansionResponse): ExpansionResponse {
+  return {
+    original: backend.original,
+    // UI expects string[] — extract just the keyword string
+    suggestions: backend.suggestions.map((s) => s.keyword),
+  };
+}
+
+function toUIRun(backend: BackendRun): Run {
+  return {
+    id: backend.id,
+    status: backend.status as Run['status'],
+    stats: {
+      discovered: backend.stats.rawResultsFound,
+      normalized: backend.stats.recordsNormalized,
+      failed: backend.stats.errors,
+    },
+  };
+}
+
+function toUIRecord(backend: BackendRecord): BusinessRecord {
+  return {
+    name: backend.name,
+    phone: backend.phone ?? '',
+    rating: backend.rating != null ? String(backend.rating) : '',
+    reviews: '',
+    address: [backend.city, backend.country].filter(Boolean).join(', '),
+    website: backend.website ?? '',
+    category: backend.primaryCategory ?? '',
+  };
+}
+
+function toUIExecutionSummary(backend: BackendExecutionSummary): ExecutionSummary {
+  return {
+    discovery: {
+      resultsFound: backend.discovery.resultsSaved,
+      pagesScraped: 0,
+    },
+    normalization: {
+      processed: backend.normalization.recordsNormalized,
+      failed: backend.normalization.errors,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// HTTP client
+// ---------------------------------------------------------------------------
+
+export const httpClient: IRuntimeFacade = {
+  async expandKeyword(params: ExpandKeywordParams): Promise<ExpansionResponse> {
+    const body: Record<string, unknown> = { keyword: params.keyword };
+    if (params.location !== undefined) body['location'] = params.location;
+    if (params.limit !== undefined) body['limit'] = params.limit;
+
+    const data = await apiFetch<BackendExpansionResponse>('/api/expand', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    return toUISuggestions(data);
+  },
+
+  async createRun(params: CreateRunParams): Promise<CreateRunResult> {
+    const data = await apiFetch<{ runId: string; status: string }>('/api/runs', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+    return { runId: data.runId };
+  },
+
+  async executeRun(params: ExecuteRunParams): Promise<ExecutionSummary> {
+    const data = await apiFetch<BackendExecutionSummary>(
+      `/api/runs/${params.runId}/execute`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          provider: params.provider,
+          seed: {
+            keyword: params.query.niche,
+            location: params.query.location,
+          },
+        }),
+      },
+    );
+    return toUIExecutionSummary(data);
+  },
+
+  async getRun(runId: string): Promise<Run> {
+    const data = await apiFetch<BackendRun>(`/api/runs/${runId}`);
+    return toUIRun(data);
+  },
+
+  async listRecords(runId: string): Promise<BusinessRecord[]> {
+    const data = await apiFetch<BackendRecordPage>(
+      `/api/runs/${runId}/records?page=1&pageSize=100`,
+    );
+    return data.items.map(toUIRecord);
+  },
+};
+// ─── Domain value types ──────────────────────────────────────────────────────
+
+export type RunStatus = 'pending' | 'running' | 'complete' | 'failed';
+export type FlowStep = 'expand' | 'select' | 'run' | 'results';
+export type EventLevel = 'info' | 'ok' | 'warn' | 'err';
+
+// ─── RuntimeFacade shapes ────────────────────────────────────────────────────
+
+export interface ExpansionResponse {
+  original: string;
+  suggestions: string[];
+}
+
+export interface ExpandKeywordParams {
+  keyword: string;
+  location?: string;
+  limit?: number;
+}
+
+export interface CreateRunParams {
+  niche: string;
+  location: string;
+}
+
+export interface CreateRunResult {
+  runId: string;
+}
+
+/** Minimal seed shape the UI passes to executeRun.
+ *  The backend resolves niche + location into a ResolvedQuery via QueryEngine. */
+export interface UIResolvedQuery {
+  niche: string;
+  location: string;
+}
+
+export interface ExecuteRunParams {
+  provider: string;
+  runId: string;
+  query: UIResolvedQuery;
+}
+
+export interface DiscoveryStats {
+  resultsFound: number;
+  pagesScraped: number;
+}
+
+export interface NormalizationStats {
+  processed: number;
+  failed: number;
+}
+
+export interface ExecutionSummary {
+  discovery: DiscoveryStats;
+  normalization: NormalizationStats;
+}
+
+export interface RunStats {
+  discovered: number;
+  normalized: number;
+  failed: number;
+}
+
+export interface Run {
+  id: string;
+  status: RunStatus;
+  stats: RunStats;
+}
+
+export interface BusinessRecord {
+  name: string;
+  phone: string;
+  rating: string;
+  reviews: string;
+  address: string;
+  website: string;
+  category: string;
+}
+
+// ─── Facade interface ────────────────────────────────────────────────────────
+
+export interface IRuntimeFacade {
+  expandKeyword(params: ExpandKeywordParams): Promise<ExpansionResponse>;
+  createRun(params: CreateRunParams): Promise<CreateRunResult>;
+  executeRun(params: ExecuteRunParams): Promise<ExecutionSummary>;
+  getRun(runId: string): Promise<Run>;
+  listRecords(runId: string): Promise<BusinessRecord[]>;
+}
+
+// ─── UI state types ──────────────────────────────────────────────────────────
+
+export type Phase = 'idle' | 'loading' | 'done' | 'error';
+
+export interface EventEntry {
+  time: string;
+  msg: string;
+  level: EventLevel;
+}
+
+export interface DiscoveryFlowState {
+  step: FlowStep;
+  phase: Phase;
+  keyword: string;
+  location: string;
+  suggestions: string[];
+  selectedKeywords: string[];
+  runId: string | null;
+  runStatus: RunStatus;
+  progress: number;
+  events: EventEntry[];
+  records: BusinessRecord[];
+  stats: RunStats | null;
+  error: string | null;
+}
+
+// ─── Mock facade (for development / Storybook) ───────────────────────────────
+// Components never import this directly. DiscoveryPage uses it as the default
+// prop value. Swap for a real HTTP client by passing facade={realClient}.
+
+const MOCK_SUGGESTIONS: string[] = [
+  'plumbers in Austin',
+  'emergency plumber Austin TX',
+  'licensed plumbing contractor Austin',
+  'drain cleaning Austin',
+  'water heater repair Austin',
+  'residential plumber Austin',
+  'commercial plumbing Austin',
+  'Austin plumbing services 24hr',
+];
+
+const MOCK_RECORDS: BusinessRecord[] = [
+  { name: 'Austin Plumbing Co.', phone: '(512) 555-0101', rating: '4.8', reviews: '312', address: '1200 S Lamar Blvd, Austin TX', website: 'austinplumbing.com', category: 'Plumber' },
+  { name: 'FlowRight Plumbers',  phone: '(512) 555-0182', rating: '4.6', reviews: '198', address: '876 W 6th St, Austin TX',      website: 'flowrightplumbers.com', category: 'Plumber' },
+  { name: 'Drain Masters ATX',   phone: '(512) 555-0234', rating: '4.5', reviews: '87',  address: '450 E Oltorf St, Austin TX',   website: 'drainmastersatx.com', category: 'Drain cleaning' },
+  { name: 'Capitol Pipe & Drain',phone: '(512) 555-0309', rating: '4.7', reviews: '254', address: '2100 Manor Rd, Austin TX',     website: 'capitolpipe.com', category: 'Plumber' },
+  { name: 'Pro Plumb ATX',       phone: '(512) 555-0411', rating: '4.4', reviews: '62',  address: '3300 Bee Cave Rd, Austin TX',  website: 'proplumbatx.com', category: 'Plumber' },
+];
+
+function delay<T>(ms: number, value: T): Promise<T> {
+  return new Promise(resolve => setTimeout(() => resolve(value), ms));
+}
+
+export const mockFacade: IRuntimeFacade = {
+  expandKeyword({ keyword, location, limit = 8 }) {
+    const loc = location ?? 'Austin TX';
+    const suggestions = MOCK_SUGGESTIONS
+      .slice(0, limit)
+      .map(s => s.replace(/Austin( TX)?/g, loc));
+    return delay(1400, { original: keyword, suggestions });
+  },
+
+  createRun(_params) {
+    const runId = 'run_' + Math.random().toString(36).slice(2, 8);
+    return delay(600, { runId });
+  },
+
+  executeRun(_params) {
+    return delay(2200, {
+      discovery: { resultsFound: MOCK_RECORDS.length, pagesScraped: 3 },
+      normalization: { processed: MOCK_RECORDS.length, failed: 0 },
+    });
+  },
+
+  getRun(runId) {
+    return delay(300, {
+      id: runId,
+      status: 'complete' as RunStatus,
+      stats: { discovered: MOCK_RECORDS.length, normalized: MOCK_RECORDS.length, failed: 0 },
+    });
+  },
+
+  listRecords(_runId) {
+    return delay(500, [...MOCK_RECORDS]);
+  },
+};
+/**
+ * @module api/server
+ * Thin HTTP adapter over RuntimeFacade.
+ * Routes map 1:1 to facade methods. No business logic here.
+ *
+ * POST /api/expand            → facade.expandKeyword()
+ * POST /api/runs              → facade.createRun()
+ * POST /api/runs/:id/execute  → facade.executeFromSeed()
+ * GET  /api/runs/:id          → facade.getRun()
+ * GET  /api/runs/:id/records  → facade.listRecords()
+ */
+
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import type { RuntimeFacade } from "../runtime/RuntimeFacade.js";
+import type { IProvider } from "../core/interfaces/IProvider.js";
+
+// ---------------------------------------------------------------------------
+// Request body shapes expected from the frontend
+// ---------------------------------------------------------------------------
+
+interface ExpandBody {
+  keyword: string;
+  location?: string;
+  limit?: number;
+}
+
+interface CreateRunBody {
+  niche: string;
+  location: string;
+}
+
+interface ExecuteRunBody {
+  /** Provider ID string — resolved to a mock/real provider server-side */
+  provider: string;
+  /** Seed fields the frontend sends — no pre-built ResolvedQuery needed */
+  seed: {
+    keyword: string;
+    location: string;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Factory
+// ---------------------------------------------------------------------------
+
+/**
+ * @param facade        - The RuntimeFacade (public API surface).
+ * @param googleMapsProvider - Optional real GoogleMapsProvider injected by serve.ts.
+ *   When absent (tests, no Playwright), the mock provider is used as fallback.
+ */
+export function createServer(
+  facade: RuntimeFacade,
+  googleMapsProvider?: IProvider,
+): Hono {
+  const app = new Hono();
+
+  // Allow the Vite dev server (port 5173) to call this API (port 3001)
+  app.use(
+    "/api/*",
+    cors({
+      origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+      allowMethods: ["GET", "POST", "OPTIONS"],
+      allowHeaders: ["Content-Type"],
+    }),
+  );
+
+  // --------------------------------------------------------------------------
+  // POST /api/expand
+  // --------------------------------------------------------------------------
+  app.post("/api/expand", async (c) => {
+    let body: ExpandBody;
+    try {
+      body = await c.req.json<ExpandBody>();
+    } catch {
+      return c.json({ ok: false, error: { code: "INVALID_JSON", message: "Request body must be JSON" } }, 400);
+    }
+
+    if (!body.keyword?.trim()) {
+      return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "keyword is required" } }, 400);
+    }
+
+    const result = await facade.expandKeyword({
+      keyword: body.keyword.trim(),
+      ...(body.location ? { location: body.location } : {}),
+      ...(body.limit !== undefined ? { limit: body.limit } : {}),
+    });
+
+    return c.json({ ok: true, data: result });
+  });
+
+  // --------------------------------------------------------------------------
+  // POST /api/runs
+  // --------------------------------------------------------------------------
+  app.post("/api/runs", async (c) => {
+    let body: CreateRunBody;
+    try {
+      body = await c.req.json<CreateRunBody>();
+    } catch {
+      return c.json({ ok: false, error: { code: "INVALID_JSON", message: "Request body must be JSON" } }, 400);
+    }
+
+    if (!body.niche?.trim()) {
+      return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "niche is required" } }, 400);
+    }
+    if (!body.location?.trim()) {
+      return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "location is required" } }, 400);
+    }
+
+    try {
+      const result = await facade.createRun({ niche: body.niche.trim(), location: body.location.trim() });
+      return c.json({ ok: true, data: result }, 201);
+    } catch (err) {
+      return c.json(
+        { ok: false, error: { code: "CREATE_FAILED", message: err instanceof Error ? err.message : String(err) } },
+        500,
+      );
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // POST /api/runs/:id/execute
+  //
+  // Accepts a provider ID string + seed { keyword, location }.
+  // The facade resolves the seed into a ResolvedQuery via QueryEngine.
+  // The mock provider is used until Milestone C wires GoogleMapsProvider.
+  // --------------------------------------------------------------------------
+  app.post("/api/runs/:id/execute", async (c) => {
+    const runId = c.req.param("id");
+
+    let body: ExecuteRunBody;
+    try {
+      body = await c.req.json<ExecuteRunBody>();
+    } catch {
+      return c.json({ ok: false, error: { code: "INVALID_JSON", message: "Request body must be JSON" } }, 400);
+    }
+
+    if (!body.seed?.keyword?.trim()) {
+      return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "seed.keyword is required" } }, 400);
+    }
+    if (!body.seed?.location?.trim()) {
+      return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "seed.location is required" } }, 400);
+    }
+
+    // Use the real GoogleMapsProvider when the frontend requests it and one
+    // was injected at startup. Fall back to the mock for any other provider
+    // ID or when no real provider is available (tests, CI).
+    const provider: IProvider =
+      body.provider === "google-maps" && googleMapsProvider !== undefined
+        ? googleMapsProvider
+        : buildMockProvider(body.provider ?? "mock");
+
+    try {
+      const summary = await facade.executeFromSeed({
+        provider: provider,
+        runId: runId as import("../core/types/common.js").RunID,
+        keyword: body.seed.keyword.trim(),
+        location: body.seed.location.trim(),
+      });
+      return c.json({ ok: true, data: summary });
+    } catch (err) {
+      return c.json(
+        { ok: false, error: { code: "EXECUTE_FAILED", message: err instanceof Error ? err.message : String(err) } },
+        500,
+      );
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // GET /api/runs/:id
+  // --------------------------------------------------------------------------
+  app.get("/api/runs/:id", async (c) => {
+    const runId = c.req.param("id");
+    try {
+      const run = await facade.getRun(runId);
+      if (run === null) {
+        return c.json({ ok: false, error: { code: "NOT_FOUND", message: `Run "${runId}" not found` } }, 404);
+      }
+      return c.json({ ok: true, data: run });
+    } catch (err) {
+      return c.json(
+        { ok: false, error: { code: "GET_FAILED", message: err instanceof Error ? err.message : String(err) } },
+        500,
+      );
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // GET /api/runs/:id/records
+  // --------------------------------------------------------------------------
+  app.get("/api/runs/:id/records", async (c) => {
+    const runId = c.req.param("id");
+    const page = Number(c.req.query("page") ?? "1");
+    const pageSize = Number(c.req.query("pageSize") ?? "20");
+
+    try {
+      const records = await facade.listRecords(runId, isNaN(page) ? 1 : page, isNaN(pageSize) ? 20 : pageSize);
+      return c.json({ ok: true, data: records });
+    } catch (err) {
+      return c.json(
+        { ok: false, error: { code: "LIST_FAILED", message: err instanceof Error ? err.message : String(err) } },
+        500,
+      );
+    }
+  });
+
+  return app;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function buildMockProvider(id: string): import("../core/interfaces/IProvider.js").IProvider {
+  return {
+    id,
+    displayName: id,
+    capabilities: {
+      supportsGeoFilter: false,
+      supportsResultCount: false,
+      supportsHours: false,
+      supportsPriceLevel: false,
+      supportsCoordinates: false,
+      maxResultsPerQuery: 0,
+    },
+    policy: {
+      rateLimit: {
+        requestsPerMinute: 0,
+        minDelayBetweenRequestsMs: 0,
+        jitterMs: 0,
+        maxConcurrent: 1,
+      },
+      retry: {
+        maxAttempts: 0,
+        backoffStrategy: "linear" as const,
+        backoffBaseMs: 0,
+        backoffCapMs: 0,
+        retryableStatusCodes: [],
+      },
+      browser: {
+        headless: true,
+        recordHar: false,
+        userAgent: null,
+        viewport: { width: 1280, height: 800 },
+        timeoutMs: 0,
+        slowMoMs: 0,
+        locale: "en-US",
+        timezoneId: "UTC",
+      },
+      conservativeMode: false,
+    },
+    checkHealth: async () => ({ status: "healthy" as const }),
+    shutdown: async () => {},
+    discover: async function* () {
+      // Yields nothing — normalization stage will process an empty set
+    },
+  };
+}
+/**
+ * @module runtime/RuntimeFacade
+ *
+ * Stable public API for the runtime. Delegates only — no logic.
+ */
+
+import type { IProvider, DiscoveryOptions } from "../core/interfaces/IProvider.js";
+import type { ResolvedQuery, QuerySeed } from "../core/models/Query.js";
+import type { RunID } from "../core/types/common.js";
+import type { RunStats } from "../core/models/Job.js";
+import type { RunService } from "../api/RunService.js";
+import type { RuntimeExecutor, ExecutionSummary } from "./RuntimeExecutor.js";
+import type { KeywordExpansionService, ExpansionResponse } from "../ai/KeywordExpansionService.js";
+import type { CreateRunRequest, RecordListRequest } from "../api/types.js";
+import type { QueryEngine } from "../query-engine/QueryEngine.js";
+import type { PassthroughGeoResolver } from "../query-engine/GeoResolver.js";
+import type { ResolvedQueryFactory } from "../query-engine/ResolvedQueryFactory.js";
+import type { GeoTarget } from "../core/types/geo.js";
+
+export type { ExpansionResponse };
+export type { ExpandedKeyword } from "../ai/IKeywordExpansionProvider.js";
+
+export interface CreateRunResult {
+  readonly runId: string;
+  readonly status: string;
+}
+
+export interface RunView {
+  readonly id: string;
+  readonly status: string;
+  readonly niche: string;
+  readonly location: string;
+  readonly startedAt: string;
+  readonly completedAt: string | null;
+  readonly stats: RunStats;
+}
+
+export interface RecordPage {
+  readonly items: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly phone: string | null;
+    readonly normalizedPhone: string | null;
+    readonly website: string | null;
+    readonly city: string | null;
+    readonly country: string | null;
+    readonly primaryCategory: string | null;
+    readonly rating: number | null;
+    readonly sourceProvider: string;
+  }[];
+  readonly total: number;
+  readonly page: number;
+  readonly hasMore: boolean;
+}
+
+export interface ExecuteRunOptions {
+  readonly provider: IProvider;
+  readonly runId: RunID;
+  readonly query: ResolvedQuery;
+  readonly discoveryOptions?: DiscoveryOptions;
+}
+
+export interface ExpandKeywordOptions {
+  readonly keyword: string;
+  readonly location?: string;
+  readonly limit?: number;
+}
+
+/**
+ * Seed-based execution options.
+ * The facade resolves keyword + location into a ResolvedQuery internally.
+ */
+export interface ExecuteFromSeedOptions {
+  readonly provider: IProvider;
+  readonly runId: RunID;
+  /** Human-readable niche / keyword, e.g. "plumbers" */
+  readonly keyword: string;
+  /** Human-readable location string, e.g. "Lagos, Nigeria" */
+  readonly location: string;
+  readonly discoveryOptions?: DiscoveryOptions;
+}
+
+export class RuntimeFacade {
+  constructor(
+    private readonly runService: RunService,
+    private readonly runtimeExecutor: RuntimeExecutor,
+    private readonly expansionService: KeywordExpansionService,
+    private readonly queryEngine: QueryEngine,
+    private readonly geoResolver: PassthroughGeoResolver,
+    private readonly resolvedQueryFactory: ResolvedQueryFactory,
+  ) {}
+
+  async expandKeyword(opts: ExpandKeywordOptions): Promise<ExpansionResponse> {
+    const expansionOpts = {
+      ...(opts.location !== undefined ? { location: opts.location } : {}),
+      ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+    };
+    return this.expansionService.expand(opts.keyword, expansionOpts);
+  }
+
+  async createRun(request: CreateRunRequest): Promise<CreateRunResult> {
+    const result = await this.runService.createRun(request);
+    if (!result.ok) throw new Error(result.error.message);
+    return { runId: result.data.id, status: result.data.status };
+  }
+
+  async executeRun(opts: ExecuteRunOptions): Promise<ExecutionSummary> {
+    return this.runtimeExecutor.execute(opts);
+  }
+
+  /**
+   * Builds a ResolvedQuery from a keyword + location string, then executes.
+   *
+   * Flow:
+   *   1. Build QuerySeed from keyword + location string
+   *   2. QueryEngine.generate() → GeneratedQuery[] (geo resolved internally)
+   *   3. Resolve geo via PassthroughGeoResolver for ResolvedQuery assembly
+   *   4. Assemble ResolvedQuery via ResolvedQueryFactory
+   *   5. Delegate to RuntimeExecutor.execute()
+   *
+   * RuntimeExecutor is completely unchanged — it still receives a ResolvedQuery.
+   */
+  async executeFromSeed(opts: ExecuteFromSeedOptions): Promise<ExecutionSummary> {
+    const geoTarget: GeoTarget = {
+      displayName: opts.location,
+      country: opts.location,
+    };
+
+    const seed: QuerySeed = {
+      niche: opts.keyword,
+      location: geoTarget,
+      // No expansion strategies for now — just the root query.
+      // Milestone C will wire multi-variant dispatch.
+      expansionStrategyIds: [],
+    };
+
+    const genResult = await this.queryEngine.generate(
+      seed,
+      opts.runId,
+      [opts.provider.id],
+    );
+
+    if (!genResult.ok) {
+      throw new Error(
+        `Query generation failed [${genResult.error.code}]: ${genResult.error.message}`,
+      );
+    }
+
+    // queries[0] is always the root seed query; generate() guarantees at
+    // least one entry on Ok, but we guard explicitly to satisfy TypeScript.
+    const rootQuery = genResult.value[0];
+    if (rootQuery === undefined) {
+      throw new Error("Query generation returned an empty result set");
+    }
+
+    // Resolve geo for ResolvedQuery assembly. PassthroughGeoResolver uses
+    // country centroid tables and never makes external calls. This mirrors
+    // what QueryEngine already did internally — if the engine succeeded,
+    // this call will also succeed with the same result.
+    const geoResult = await this.geoResolver.resolve(geoTarget);
+    const resolvedGeo = geoResult.ok
+      ? geoResult.value
+      : { ...geoTarget, resolvedCoordinates: { lat: 0, lng: 0 } };
+
+    const resolvedQuery = this.resolvedQueryFactory.create(rootQuery, resolvedGeo);
+
+    return this.runtimeExecutor.execute({
+      provider: opts.provider,
+      runId: opts.runId,
+      query: resolvedQuery,
+      ...(opts.discoveryOptions !== undefined
+        ? { discoveryOptions: opts.discoveryOptions }
+        : {}),
+    });
+  }
+
+  async getRun(runId: string): Promise<RunView | null> {
+    const result = await this.runService.getRun(runId);
+    if (!result.ok) {
+      if (result.error.code === "NOT_FOUND") return null;
+      throw new Error(result.error.message);
+    }
+    return result.data;
+  }
+
+  async listRecords(runId: string, page = 1, pageSize = 20): Promise<RecordPage> {
+    const req: RecordListRequest = { runId, page, pageSize };
+    const result = await this.runService.listRecords(req);
+    if (!result.ok) throw new Error(result.error.message);
+    return {
+      items: result.data.items,
+      total: result.data.total,
+      page: result.data.page,
+      hasMore: result.data.hasMore,
+    };
+  }
+}
+import React from 'react';
+import type { Phase } from '../types/ui';
+
+interface Props {
+  selectedKeywords: string[];
+  location: string;
+  phase: Phase;
+  error: string | null;
+  onLocationChange: (value: string) => void;
+  onBack: () => void;
+  onStartRun: () => void;
+}
+
+export function Step2Select({
+  selectedKeywords,
+  location,
+  phase,
+  error,
+  onLocationChange,
+  onBack,
+  onStartRun,
+}: Props): React.ReactElement {
+  const isLoading = phase === 'loading';
+
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-700 dark:bg-neutral-900">
+      <p className="mb-3 text-[11px] font-medium uppercase tracking-widest text-neutral-500">
+        Run configuration
+      </p>
+
+      {/* Selected keywords summary */}
+      <div className="mb-4">
+        <p className="mb-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+          Selected keywords ({selectedKeywords.length})
+        </p>
+        <div className="flex flex-wrap gap-1.5" role="list" aria-label="Selected keywords">
+          {selectedKeywords.map(kw => (
+            <span
+              key={kw}
+              role="listitem"
+              className="inline-flex items-center rounded-full border border-violet-300 bg-violet-50 px-3 py-1 text-xs text-violet-800 dark:border-violet-600 dark:bg-violet-950 dark:text-violet-300"
+            >
+              {kw}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <hr className="mb-4 border-neutral-100 dark:border-neutral-700" />
+
+      {/* Config fields */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="provider-select"
+            className="text-[11px] text-neutral-500 dark:text-neutral-400"
+          >
+            Provider
+          </label>
+          <select
+            id="provider-select"
+            disabled
+            className={[
+              'h-9 rounded-lg border px-3 text-sm',
+              'border-neutral-200 bg-neutral-50 text-neutral-500',
+              'dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-400',
+              'cursor-not-allowed opacity-75',
+            ].join(' ')}
+          >
+            <option value="google-maps">google-maps (Playwright)</option>
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="run-location"
+            className="text-[11px] text-neutral-500 dark:text-neutral-400"
+          >
+            Location
+          </label>
+          <input
+            id="run-location"
+            type="text"
+            value={location}
+            onChange={e => onLocationChange(e.target.value)}
+            disabled={isLoading}
+            className={[
+              'h-9 rounded-lg border px-3 text-sm outline-none transition',
+              'border-neutral-200 bg-white text-neutral-900',
+              'focus:border-violet-400 focus:ring-2 focus:ring-violet-100',
+              'dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100',
+              'dark:focus:border-violet-500 dark:focus:ring-violet-900',
+              'disabled:opacity-50',
+            ].join(' ')}
+          />
+        </div>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div
+          role="alert"
+          className="mt-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400"
+        >
+          <AlertIcon />
+          {error}
+        </div>
+      )}
+
+      {/* Footer buttons */}
+      <div className="mt-5 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={isLoading}
+          className={[
+            'flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium transition',
+            'border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50',
+            'dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700',
+            'disabled:opacity-50',
+            'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400',
+          ].join(' ')}
+        >
+          <ArrowLeftIcon />
+          back
+        </button>
+
+        <button
+          type="button"
+          onClick={onStartRun}
+          disabled={isLoading || selectedKeywords.length === 0}
+          aria-busy={isLoading}
+          className={[
+            'flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition',
+            'bg-violet-700 text-white hover:bg-violet-800 active:scale-[0.98]',
+            'disabled:cursor-not-allowed disabled:opacity-50',
+            'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500',
+          ].join(' ')}
+        >
+          {isLoading ? (
+            <>
+              <SpinnerIcon />
+              running…
+            </>
+          ) : (
+            <>
+              <PlayIcon />
+              start discovery
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Micro-icons ─────────────────────────────────────────────────────────────
+
+function AlertIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" />
+    </svg>
+  );
+}
+
+function ArrowLeftIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M19 12H5" /><path d="m12 19-7-7 7-7" />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polygon points="6 3 20 12 6 21 6 3" />
+    </svg>
+  );
+}
+
+function SpinnerIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="animate-spin">
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
+  );
+}
