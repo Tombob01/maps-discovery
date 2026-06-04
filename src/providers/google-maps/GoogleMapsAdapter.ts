@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @module providers/google-maps/GoogleMapsAdapter
  *
  * Extracts structured raw data from Google Maps DOM.
@@ -8,13 +8,13 @@
  *   - Open each card's detail panel and extract all available fields
  *   - Extract the Place ID from the listing URL
  *   - Extract GPS coordinates from the URL or map state
- *   - Produce GoogleMapsRawPayload — no normalization, no transformation
+ *   - Produce GoogleMapsRawPayload â€” no normalization, no transformation
  *
  * Rules:
  *   - Returns null / undefined for any field that cannot be extracted
- *   - Never throws — all errors become null/undefined field values or
+ *   - Never throws â€” all errors become null/undefined field values or
  *     are surfaced via the Result return type on page-level operations
- *   - No business logic — extraction only
+ *   - No business logic â€” extraction only
  */
 
 import { humanDelay } from "./GoogleMapsBrowser.js";
@@ -24,7 +24,7 @@ import type { GoogleMapsRawPayload } from "./GoogleMapsRawPayload.js";
 import type { Page, ElementHandle } from "playwright";
 
 // ---------------------------------------------------------------------------
-// Extraction helpers — pure DOM reading, no side effects
+// Extraction helpers â€” pure DOM reading, no side effects
 // ---------------------------------------------------------------------------
 
 /**
@@ -36,12 +36,12 @@ import type { Page, ElementHandle } from "playwright";
  *
  * Returns undefined if the Place ID cannot be extracted.
  */
-function extractPlaceId(url: string): string | undefined {
-  // Format 1: !1s<placeId>! — most common in modern Maps URLs
+export function extractPlaceId(url: string): string | undefined {
+  // Format 1: !1s<placeId>! â€” most common in modern Maps URLs
   const match1 = url.match(/!1s(ChIJ[^!]+)/);
   if (match1?.[1]) return decodeURIComponent(match1[1]);
 
-  // Format 2: !19s<placeId> � sidebar card href URLs
+  // Format 2: !19s<placeId> — sidebar card href URLs
   const match2 = url.match(/!19s(ChIJ[^!?&]+)/);
   if (match2?.[1]) return decodeURIComponent(match2[1]);
 
@@ -64,7 +64,7 @@ function extractPlaceId(url: string): string | undefined {
 function extractCoordinates(
   url: string,
 ): { lat: number; lng: number } | undefined {
-  // Format 1: @lat,lng �" detail panel URLs
+  // Format 1: @lat,lng â€" detail panel URLs
   const match = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (match?.[1] && match[2]) {
     const lat = parseFloat(match[1]);
@@ -75,7 +75,7 @@ function extractCoordinates(
     }
   }
 
-  // Format 2: !3d<lat>!4d<lng> �" sidebar card href URLs
+  // Format 2: !3d<lat>!4d<lng> â€" sidebar card href URLs
   const match2 = url.match(/!3d(-?\d+\.\d+).*?!4d(-?\d+\.\d+)/);
   if (match2?.[1] && match2[2]) {
     const lat = parseFloat(match2[1]);
@@ -138,7 +138,7 @@ export class GoogleMapsAdapter {
 
   /**
    * Returns all currently-rendered result card elements in the sidebar.
-   * The list grows as the sidebar is scrolled — call this after each scroll.
+   * The list grows as the sidebar is scrolled â€” call this after each scroll.
    */
   async getResultCards(page: Page): Promise<ElementHandle[]> {
     try {
@@ -194,6 +194,24 @@ export class GoogleMapsAdapter {
       searchQuery,
       resultPosition,
     );
+  }
+
+  /**
+   * Navigates to a known place URL and extracts all fields from the detail panel.
+   * Used by the two-phase discovery flow (Phase 2) where URLs are collected
+   * in Phase 1 and visited directly without clicking sidebar cards.
+   *
+   * Precondition: the page has already navigated to url and
+   * div[role="main"] is present. The caller is responsible for navigation
+   * and for skipping this call if navigation failed.
+   */
+  async extractFromDetailUrl(
+    page: Page,
+    url: string,
+    searchQuery: string,
+    position: number,
+  ): Promise<GoogleMapsRawPayload> {
+    return this._extractFromDetailPanel(page, url, searchQuery, position);
   }
 
   /**
@@ -299,7 +317,7 @@ export class GoogleMapsAdapter {
 
       const itemId = await phoneBtn.getAttribute("data-item-id");
       if (itemId) {
-        // data-item-id="phone:tel:+2348012345678" → "+2348012345678"
+        // data-item-id="phone:tel:+2348012345678" â†’ "+2348012345678"
         const match = itemId.match(/phone:tel:(.+)/);
         if (match?.[1]) return decodeURIComponent(match[1]);
       }
