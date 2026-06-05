@@ -5,32 +5,34 @@
  *
  * Implements IBrowserProvider (extends IProvider).
  *
- * Discovery algorithm:
- *   1. Navigate to Google Maps search for the resolved query text
- *   2. Capture the live search URL immediately after navigation succeeds
- *   3. Scroll the sidebar to load results progressively
- *   4. For each new result card: open detail panel, extract raw payload
- *   5. After extraction, restore the search page via goBack(). If goBack() lands
- *      without a feed, retry once. If both fail, break inner loop and defer to outer.
- *   6. Yield a ProviderResult containing the GoogleMapsRawPayload
- *   7. Continue scrolling until end-of-results or maxResults reached
- *   8. On each yield, attach a ResumeToken encoding scroll progress
+ * Discovery algorithm -- two-phase:
+ *   Phase 1 (collection):
+ *     1. Navigate to Google Maps search for the resolved query text
+ *     2. Scroll the sidebar to load results progressively
+ *     3. For each new result card: read href via getCardListingUrl(), extract
+ *        placeId, deduplicate, push { url, placeId, position } to collectedUrls
+ *     4. Never click cards or navigate away from the search feed during Phase 1
+ *     5. Continue scrolling until end-of-results or maxResults URLs collected
+ *   Phase 2 (extraction):
+ *     6. For each collected URL: page.goto(url) -> waitForSelector(div[role="main"])
+ *     7. Call adapter.extractFromDetailUrl() to extract all fields
+ *     8. Yield a ProviderResult containing the GoogleMapsRawPayload
+ *     9. On each yield, attach a ResumeToken encoding progress
  *
  * Resumability:
  *   - ResumeToken carries { strategy: "cursor", pageRequest: { cursor } }
- *     where cursor = the index of the last successfully yielded result
- *   - On restart, the provider scrolls past already-collected results
- *     before yielding new ones
+ *     where cursor encodes the set of already-yielded result IDs
+ *   - On restart, the provider skips any result whose ID was already yielded
  *
  * Error handling:
- *   - CAPTCHA detected ? throw ProviderError.fatal (session is compromised)
- *   - Page load timeout ? retry up to policy.retry.maxAttempts
- *   - Browser crash ? throw ProviderError.retryable (job will be requeued)
- *   - Individual card extraction failure ? log and skip (non-fatal)
- *   - Search page restoration failure ? log and skip remaining cards in batch
+ *   - CAPTCHA detected -> throw ProviderError.fatal (session is compromised)
+ *   - Page load timeout -> retry up to policy.retry.maxAttempts
+ *   - Browser crash -> throw ProviderError.retryable (job will be requeued)
+ *   - Individual URL navigation failure -> log and skip (non-fatal)
+ *   - Individual URL extraction failure -> log and skip (non-fatal)
  */
 
-import { type GoogleMapsAdapter } from "./GoogleMapsAdapter.js";
+import { type GoogleMapsAdapter, extractPlaceId } from "./GoogleMapsAdapter.js";
 import {
   type GoogleMapsBrowser,
   humanDelay,
@@ -60,18 +62,10 @@ const DISPLAY_NAME = "Google Maps";
 
 // ---------------------------------------------------------------------------
 // Minimal structured logger
-//
-// All scraping diagnostics go through this helper so they can be silenced in
-// production by setting LOG_LEVEL or by switching the implementation.
-// Uses console.debug (filtered out by default in most log aggregators) rather
-// than console.log, so discovery runs are not noisy in production.
-// Errors always go to console.error regardless of level.
 // ---------------------------------------------------------------------------
 
 const log = {
   debug: (...args: unknown[]): void => {
-    // Replace with a structured logger (pino, winston, etc.) if needed.
-    // console.debug is suppressed by default in most production log pipelines.
     console.debug("[discover]", ...args);
   },
   error: (...args: unknown[]): void => {
@@ -89,32 +83,29 @@ const GOOGLE_MAPS_MAX_RESULTS = 120;
 const SCROLL_SETTLE_MIN_MS = 800;
 const SCROLL_SETTLE_MAX_MS = 1800;
 
-/** How many scroll attempts before declaring end-of-results. */
+/** How many scroll attempts producing no new cards before declaring end-of-results. */
 const MAX_EMPTY_SCROLL_ATTEMPTS = 4;
 
-/**
- * Maximum total scroll attempts when re-hydrating feed depth after search page restoration.
- * Each scroll typically loads ~9 additional cards; 5 attempts ï¿½ ~9 cards = ~45 additional
- * cards on top of the initial ~9, covering most real-world result sets.
- */
-const MAX_FEED_DEPTH_RESTORE_ATTEMPTS = 5;
-
-/**
- * How many consecutive scroll attempts that produce no new cards before giving up.
- * Google Maps lazy rendering is asynchronous ï¿½ a single non-increasing scroll does NOT
- * mean the feed is exhausted. Require this many stagnant scrolls before bailing out.
- */
-const MAX_FEED_DEPTH_STAGNANT_ATTEMPTS = 2;
-
+/** Delay between Phase 2 page.goto() calls to avoid triggering rate limits (ms). */
+const PHASE2_NAV_DELAY_MIN_MS = 800;
+const PHASE2_NAV_DELAY_MAX_MS = 1800;
 
 // ---------------------------------------------------------------------------
-// Resume cursor ï¿½ what's stored in ResumeToken.pageRequest.cursor
+// Collected URL entry -- Phase 1 output, Phase 2 input
+// ---------------------------------------------------------------------------
+
+interface CollectedUrl {
+  readonly url: string;
+  readonly placeId: string | undefined;
+  readonly position: number;
+}
+
+// ---------------------------------------------------------------------------
+// Resume cursor -- what's stored in ResumeToken.pageRequest.cursor
 // ---------------------------------------------------------------------------
 
 interface GoogleMapsCursor {
-  /** IDs of results already yielded ï¿½ used for identity-based resume. */
   readonly yieldedIds: readonly string[];
-  /** The search query text ï¿½ used to verify the token is still valid. */
   readonly queryHash: string;
 }
 
@@ -169,7 +160,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
 
   readonly capabilities: ProviderCapabilities = {
     supportsGeoFilter: true,
-    supportsResultCount: false, // Google Maps does not expose total count
+    supportsResultCount: false,
     supportsHours: true,
     supportsPriceLevel: true,
     supportsCoordinates: true,
@@ -191,10 +182,6 @@ export class GoogleMapsProvider implements IBrowserProvider {
     this.adapter = adapter;
   }
 
-  // ---------------------------------------------------------------------------
-  // IBrowserProvider ï¿½ lifecycle
-  // ---------------------------------------------------------------------------
-
   get browserReady(): boolean {
     return this._browserReady;
   }
@@ -212,15 +199,11 @@ export class GoogleMapsProvider implements IBrowserProvider {
     this._browserReady = false;
   }
 
-  // ---------------------------------------------------------------------------
-  // IProvider ï¿½ health check
-  // ---------------------------------------------------------------------------
-
   async checkHealth(): Promise<ProviderHealth> {
     if (!this._browserReady) {
       return {
         status: "unavailable",
-        reason: "BROWSER_LAUNCH_FAILED: Browser not initialised ï¿½ call initializeBrowser() first",
+        reason: "BROWSER_LAUNCH_FAILED: Browser not initialised - call initializeBrowser() first",
       };
     }
     if (!this.browser.isReady) {
@@ -232,38 +215,25 @@ export class GoogleMapsProvider implements IBrowserProvider {
     return { status: "healthy" };
   }
 
-  // ---------------------------------------------------------------------------
-  // IProvider ï¿½ shutdown
-  // ---------------------------------------------------------------------------
-
   async shutdown(): Promise<void> {
     await this.closeBrowser();
   }
-
-  // ---------------------------------------------------------------------------
-  // IProvider ï¿½ discover (async generator)
-  // ---------------------------------------------------------------------------
 
   async *discover(
     query: ResolvedQuery,
     options?: DiscoveryOptions,
   ): AsyncGenerator<ProviderResult, void, undefined> {
-    // Guard: browser must be ready
     if (!this._browserReady) {
       throw ProviderError.fatal(
         "BROWSER_LAUNCH_FAILED",
         PROVIDER_ID,
-        "BROWSER_LAUNCH_FAILED: Browser not initialised ï¿½ call initializeBrowser() before discover()",
+        "BROWSER_LAUNCH_FAILED: Browser not initialised - call initializeBrowser() before discover()",
       );
     }
 
     const maxResults = options?.maxResults ?? GOOGLE_MAPS_MAX_RESULTS;
 
-    // -- Decode resume cursor -------------------------------------------------
-    // Identity-based resume: pre-populate seenPlaceIds from the token so we
-    // skip any result whose ID was already yielded, regardless of position.
     const resumedIds = new Set<string>();
-
     if (options?.resumeToken !== undefined) {
       const token = options.resumeToken;
       if (token.strategy === "cursor" && token.pageRequest.kind === "cursor") {
@@ -281,15 +251,11 @@ export class GoogleMapsProvider implements IBrowserProvider {
       }
     }
 
-    // -- Open a new page -------------------------------------------------------
     const pageResult = await this.browser.newPage();
     if (!pageResult.ok) throw pageResult.error;
     const page = pageResult.value;
 
-    // --- MIGRATION STEP 1: yield counter visible in finally --------------
-    // -----------------------------------------------------------------------
     try {
-      // -- Navigate to search ------------------------------------------------
       const navResult = await withRetryResult(
         () => this.browser.navigateToSearch(page, query.rawText),
         this.policy.retry.maxAttempts,
@@ -299,18 +265,17 @@ export class GoogleMapsProvider implements IBrowserProvider {
       );
       if (!navResult.ok) throw navResult.error;
 
-      // Capture the search URL immediately after navigation.
-      // Used to detect when extractFromCard navigates away and to restore the page.
-      const searchUrl = page.url();
+      // -------------------------------------------------------------------
+      // Phase 1: scroll the feed and collect card hrefs
+      // No clicks. No navigation away from the search results page.
+      // -------------------------------------------------------------------
 
-      // -- Scraping loop ------------------------------------------------------
       const seenPlaceIds = new Set<string>(resumedIds);
-      let totalYielded = 0;
+      const collectedUrls: CollectedUrl[] = [];
       let emptyScrolls = 0;
       let lastCardCount = 0;
 
-      while (totalYielded < maxResults) {
-        // Check for CAPTCHA before each batch
+      while (collectedUrls.length < maxResults) {
         if (await this.browser.isCaptchaPresent(page)) {
           throw ProviderError.fatal(
             "CAPTCHA_DETECTED",
@@ -319,247 +284,126 @@ export class GoogleMapsProvider implements IBrowserProvider {
           );
         }
 
-        // Collect all cards currently visible
         const cards = await this.adapter.getResultCards(page);
         const cardCount = cards.length;
 
         if (cardCount === lastCardCount) {
-          // No new cards loaded since last scroll
           if (await this.browser.isEndOfResults(page)) break;
           emptyScrolls++;
           if (emptyScrolls >= MAX_EMPTY_SCROLL_ATTEMPTS) break;
-          // Scroll to load more
           await this.browser.scrollResultsSidebar(page);
           await humanDelay(SCROLL_SETTLE_MIN_MS, SCROLL_SETTLE_MAX_MS);
           continue;
         }
 
         emptyScrolls = 0;
-        // processFromIndex must never exceed cardCount ï¿½ if lastCardCount is
-        // higher than cardCount (feed collapsed after a deferred restoration),
-        // clamping prevents the inner loop from starting past the array end
-        // and silently running zero iterations, which would regress lastCardCount.
         const processFromIndex = Math.min(lastCardCount, cardCount);
         lastCardCount = cardCount;
 
-        for (let i = processFromIndex; i < cards.length && totalYielded < maxResults; i++) {
+        for (
+          let i = processFromIndex;
+          i < cards.length && collectedUrls.length < maxResults;
+          i++
+        ) {
           const card = cards[i];
           if (card === undefined) continue;
 
-          // Apply inter-request delay
-          if (i > 0) {
-            const delay =
-              this.policy.rateLimit.minDelayBetweenRequestsMs +
-              Math.floor(Math.random() * this.policy.rateLimit.jitterMs);
-            await humanDelay(delay, delay + this.policy.rateLimit.jitterMs);
+          const href = await this.adapter.getCardListingUrl(card);
+          if (href === undefined) {
+            log.debug(`phase1: card i=${i} has no href -- skipping`);
+            continue;
           }
 
-          // Extract raw payload ï¿½ may navigate away from search results
-          let payload: GoogleMapsRawPayload | undefined;
-          try {
-            payload = await this.adapter.extractFromCard(
-              page,
-              card,
-              query.rawText,
-              i + 1,
-            );
-          } catch (err) {
-            log.error(`i=${i} extractFromCard threw:`, err);
-          }
+          const absoluteUrl = href.startsWith("http")
+            ? href
+            : new URL(href, page.url()).href;
 
-          // Restore search results page if extractFromCard navigated away.
-          // Strategy: try goBack() first ï¿½ preserves scroll depth and rendered cards.
-          // If both goBack() attempts fail, break inner loop and defer to outer scroll loop.
-          const currentUrl = page.url();
-          if (currentUrl !== searchUrl) {
-            let restored = false;
-            try {
-              await page.goBack({ waitUntil: "domcontentloaded" });
-              let feed = await page.waitForSelector('div[role="feed"]', { timeout: 5000 }).catch(() => null);
-              if (feed === null) {
-                // Detail panel may have pushed two history entries ï¿½ retry goBack() once
-                // before treating restoration as failed and deferring to the outer scroll loop.
-                log.debug(`i=${i} goBack() landed without feed ï¿½ retrying goBack()`);
-                await page.goBack({ waitUntil: "domcontentloaded" });
-                feed = await page.waitForSelector('div[role="feed"]', { timeout: 5000 }).catch(() => null);
-                if (feed !== null) {
-                  restored = true;
-                  log.debug(`i=${i} restored via second goBack()`);
-                }
-              } else {
-                restored = true;
-                log.debug(`i=${i} restored via goBack()`);
-              }
-            } catch (err) {
-              log.error(`i=${i} goBack threw:`, err);
-            }
-            if (!restored) {
-              // Both goBack() attempts failed. The page is now in an unknown SPA
-              // state ï¿½ not on the search feed. If we break here without resetting
-              // the page, the outer loop calls getResultCards() on a non-feed page,
-              // gets 0 cards, lastCardCount regresses to 0, and the stagnation
-              // detector exits after MAX_EMPTY_SCROLL_ATTEMPTS.
-              // Fix: silently navigate back to searchUrl so the outer loop lands
-              // on the feed and can scroll correctly. Do NOT call _restoreFeedDepth
-              // and do NOT set restored=true ï¿½ we are not recovering this card,
-              // just resetting the page for the outer loop.
-              log.debug(`i=${i} both goBack() attempts failed ï¿½ resetting page for outer loop`);
-              try {
-                await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
-                await page.waitForSelector('div[role="feed"]', { timeout: 5000 });
-                log.debug(`i=${i} page reset to searchUrl for outer loop recovery`);
-              } catch {
-                // Reset also failed ï¿½ nothing we can do, break and let outer loop handle it
-                log.debug(`i=${i} page reset failed ï¿½ breaking inner loop`);
-              }
-              break;
-            }
-            if (restored) {
-              const _restoredCards = await this._restoreFeedDepth(page, lastCardCount);
-              log.debug(`post-restore i=${i} available=${_restoredCards.length} card_exists=${_restoredCards[i] !== undefined}`);
-              if (_restoredCards[i] === undefined) {
-                // Feed shorter than current index after restoration.
-                // Do NOT update lastCardCount ï¿½ keep it at its pre-extraction value
-                // so the outer scroll loop sees cardCount > lastCardCount after
-                // loading more cards and correctly processes the next batch.
-                log.debug(`i=${i} out of restored feed (${_restoredCards.length} cards) ï¿½ deferring to outer scroll loop`);
-                break;
-              }
-              // If goBack() restored more cards than the current batch had
-              // AND we are at the last card of this batch, update lastCardCount
-              // so the outer loop processes the extra cards in the next iteration.
-              // For mid-batch cards, leave lastCardCount unchanged so the outer
-              // loop scrolls for more after the batch completes normally.
-              if (_restoredCards.length > lastCardCount) {
-                log.debug(`post-restore feed grew: ${lastCardCount} -> ${_restoredCards.length} cards (lastCardCount unchanged ï¿½ owned by outer loop)`);
-              }
-            }
-          }
+          const placeId = extractPlaceId(absoluteUrl);
+          const resultId = placeId ?? this._syntheticId(absoluteUrl);
 
-          // Skip if extraction failed
-          if (payload === undefined) continue;
-
-          // Derive a stable result ID ï¿½ prefer Place ID, fall back to URL hash
-          const resultId =
-            payload.placeId ??
-            this._syntheticId(payload.listingUrl ?? `position:${i}`);
-
-          // Skip duplicates within the same session
           if (seenPlaceIds.has(resultId)) continue;
           seenPlaceIds.add(resultId);
-          totalYielded++;
 
-          const resumeToken = buildResumeToken(
-            Array.from(seenPlaceIds),
-            query.queryHash,
-          );
-
-          const result: ProviderResult = {
-            providerId: PROVIDER_ID,
-            providerResultId: resultId,
-            rawPayload: payload,
-            sourceUrl: payload.listingUrl ?? null,
-            collectedAt: new Date(),
-            runId: query.runId,
-            queryId: query.id,
-            resumeToken,
-          };
-
-          yield result;
-
+          collectedUrls.push({ url: absoluteUrl, placeId, position: i + 1 });
+          log.debug(`phase1: collected i=${i} placeId=${placeId ?? "none"} total=${collectedUrls.length}`);
         }
 
-        // After processing the current batch, scroll for more
         if (await this.browser.isEndOfResults(page)) break;
         await this.browser.scrollResultsSidebar(page);
         await humanDelay(SCROLL_SETTLE_MIN_MS, SCROLL_SETTLE_MAX_MS);
       }
+
+      log.debug(`phase1 complete: collected ${collectedUrls.length} URLs`);
+
+      // -------------------------------------------------------------------
+      // Phase 2: visit each collected URL and extract business data
+      // -------------------------------------------------------------------
+
+      let totalYielded = 0;
+
+      for (const entry of collectedUrls) {
+        if (totalYielded >= maxResults) break;
+
+        try {
+          await page.goto(entry.url, { waitUntil: "domcontentloaded", timeout: 20000 });
+          await page.waitForSelector('div[role="main"]', { timeout: 10000 });
+        } catch (err) {
+          log.error(`phase2: navigation failed for ${entry.url} -- skipping`, err);
+          continue;
+        }
+
+        let payload: GoogleMapsRawPayload | undefined;
+        try {
+          payload = await this.adapter.extractFromDetailUrl(
+            page,
+            entry.url,
+            query.rawText,
+            entry.position,
+          );
+        } catch (err) {
+          log.error(`phase2: extraction failed for ${entry.url} -- skipping`, err);
+          continue;
+        }
+
+        const resultId =
+          payload.placeId ??
+          entry.placeId ??
+          this._syntheticId(payload.listingUrl ?? `position:${entry.position}`);
+
+        const resumeToken = buildResumeToken(
+          Array.from(seenPlaceIds),
+          query.queryHash,
+        );
+
+        const result: ProviderResult = {
+          providerId: PROVIDER_ID,
+          providerResultId: resultId,
+          rawPayload: payload,
+          sourceUrl: payload.listingUrl ?? null,
+          collectedAt: new Date(),
+          runId: query.runId,
+          queryId: query.id,
+          resumeToken,
+        };
+
+        yield result;
+        totalYielded++;
+
+        if (totalYielded < collectedUrls.length) {
+          await humanDelay(PHASE2_NAV_DELAY_MIN_MS, PHASE2_NAV_DELAY_MAX_MS);
+        }
+      }
+
+      log.debug(`phase2 complete: yielded ${totalYielded} results`);
+
     } finally {
-      // Always close the page -- even if the generator was abandoned mid-run
       await page.close().catch(() => {
         /* ignore */
       });
     }
   }
 
-  /**
-   * After restoring the search page via goto(), Maps resets the feed scroll
-   * position to the top and only renders the first batch of cards (~9).
-   * This helper re-scrolls the feed until at least `targetCount` cards are
-   * visible, mirroring the depth that was loaded before the detail panel visit.
-   *
-   * Returns the card array at the point we stop (either target reached,
-   * scroll stalled, or max attempts exhausted). The caller uses this as
-   * `freshCards` to avoid a redundant extra getResultCards() call.
-   *
-   * Bounded by MAX_FEED_DEPTH_RESTORE_ATTEMPTS to prevent infinite loops.
-   */
-  private async _restoreFeedDepth(
-    page: import('playwright').Page,
-    targetCount: number,
-  ): Promise<object[]> {
-    let currentCards = await this.adapter.getResultCards(page);
-    if (currentCards.length >= targetCount) {
-      log.debug(
-        `_restoreFeedDepth: target ${targetCount} met immediately (${currentCards.length} cards)`,
-      );
-      return currentCards;
-    }
-
-    // Google Maps lazy rendering is asynchronous after a full page restoration.
-    // A single scroll often produces no immediate DOM change even though more
-    // cards will appear after a short settle delay. Track consecutive stagnant
-    // attempts separately from total attempts so one empty scroll doesn't abort.
-    let stagnantAttempts = 0;
-    let previousRenderedCount = currentCards.length;
-    let bestCards = currentCards;
-    log.debug(`_restoreFeedDepth: entry cards=${currentCards.length} target=${targetCount} -- waiting for observer`);
-
-    for (let attempt = 0; attempt < MAX_FEED_DEPTH_RESTORE_ATTEMPTS; attempt++) {
-      await this.browser.scrollResultsSidebar(page);
-      log.debug(`_restoreFeedDepth: scroll fired -- cards before wait=${currentCards.length}`);
-      // Use a slightly longer settle window after restoration ï¿½ Maps lazy rendering
-      // is slower after a full goto() than during normal incremental scrolling.
-      await humanDelay(SCROLL_SETTLE_MAX_MS, SCROLL_SETTLE_MAX_MS + 500);
-      log.debug(`_restoreFeedDepth: after wait -- cards before getResultCards=${currentCards.length}`);
-      currentCards = await this.adapter.getResultCards(page);
-      if (currentCards.length > bestCards.length) bestCards = currentCards;
-
-      const grew = currentCards.length > previousRenderedCount;
-      if (grew) {
-        stagnantAttempts = 0;
-        log.debug(
-          `_restoreFeedDepth attempt ${attempt + 1}: ${previousRenderedCount} -> ${currentCards.length}/${targetCount} cards (growing)`,
-        );
-        previousRenderedCount = currentCards.length;
-      } else {
-        stagnantAttempts++;
-        log.debug(
-          `_restoreFeedDepth attempt ${attempt + 1}: ${currentCards.length}/${targetCount} cards (stagnant ${stagnantAttempts}/${MAX_FEED_DEPTH_STAGNANT_ATTEMPTS})`,
-        );
-      }
-
-      if (bestCards.length >= targetCount) {
-        log.debug(`_restoreFeedDepth: target ${targetCount} reached after ${attempt + 1} scrolls`);
-        break;
-      }
-      if (stagnantAttempts >= MAX_FEED_DEPTH_STAGNANT_ATTEMPTS) {
-        log.debug(
-          `_restoreFeedDepth: bailing after ${stagnantAttempts} stagnant scrolls (best: ${bestCards.length}/${targetCount})`,
-        );
-        break;
-      }
-    }
-
-    return bestCards;
-  }
-
-  /**
-   * Creates a synthetic result ID when no Place ID is available.
-   * Deterministic given the same input, but not a cryptographic hash.
-   */
   private _syntheticId(input: string): string {
-    // Simple djb2 hash for a short deterministic string
     let hash = 5381;
     for (let i = 0; i < input.length; i++) {
       hash = ((hash << 5) + hash) ^ input.charCodeAt(i);

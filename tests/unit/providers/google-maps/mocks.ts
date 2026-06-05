@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @module tests/unit/providers/google-maps/mocks
  *
  * Mock implementations of Playwright Page, ElementHandle, and internal
@@ -58,6 +58,7 @@ export interface MockPage {
   evaluate: (fn: unknown, arg?: unknown) => Promise<unknown>;
   addInitScript: (fn: unknown) => Promise<void>;
   close: () => Promise<void>;
+  goBack: (opts?: unknown) => Promise<void>;
   setDefaultTimeout: (ms: number) => void;
   setDefaultNavigationTimeout: (ms: number) => void;
 }
@@ -74,6 +75,7 @@ export function makeMockPage(overrides: Partial<MockPage> = {}): MockPage {
     evaluate: overrides.evaluate ?? (async () => undefined),
     addInitScript: overrides.addInitScript ?? (async () => {}),
     close: overrides.close ?? (async () => {}),
+    goBack: overrides.goBack ?? (async () => {}),
     setDefaultTimeout: overrides.setDefaultTimeout ?? (() => {}),
     setDefaultNavigationTimeout:
       overrides.setDefaultNavigationTimeout ?? (() => {}),
@@ -135,6 +137,12 @@ export interface MockAdapter {
     card: MockElementHandle,
     query: string,
     pos: number) => Promise<GoogleMapsRawPayload>;
+  extractFromDetailUrl: (
+    page: MockPage,
+    url: string,
+    searchQuery: string,
+    position: number,
+  ) => Promise<GoogleMapsRawPayload>;
 }
 
 export function makeMockAdapter(
@@ -142,6 +150,7 @@ export function makeMockAdapter(
   overrides: Partial<MockAdapter> = {},
 ): MockAdapter {
   let callCount = 0;
+  let hrefCallCount = 0;
   return {
     getResultCards:
       overrides.getResultCards ??
@@ -151,7 +160,23 @@ export function makeMockAdapter(
       }),
     getCardListingUrl:
       overrides.getCardListingUrl ??
-      (async () => "https://maps.google.com/place/test/ChIJabc"),
+      (async () => {
+        const p = payloads[hrefCallCount++];
+        const pid = p?.placeId ?? "ChIJabc";
+        return "https://www.google.com/maps/place/Business/@1.0,2.0,17z/data=!19s" + pid;
+      }),
+    extractFromDetailUrl:
+      overrides.extractFromDetailUrl ??
+      (async (_page, url, searchQuery, position) => {
+        // Match payload by placeId extracted from URL, fall back to callCount
+        const pidMatch = url.match(/!(?:19s|1s)(ChIJ[^!?&]+)/);
+        const pid = pidMatch?.[1];
+        const payload = (pid ? payloads.find(p => p.placeId === pid) : undefined)
+          ?? payloads[callCount]
+          ?? { searchQuery, resultPosition: position, detailPanelScraped: true };
+        callCount++;
+        return payload;
+      }),
     extractFromCard:
       overrides.extractFromCard ??
       (async (_page, _card, query, pos) => {
