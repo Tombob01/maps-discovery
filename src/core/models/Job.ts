@@ -79,7 +79,7 @@ export interface DiscoveryJobPayload {
 export interface NormalizationJobPayload {
   readonly runId: RunID;
   readonly queryId: QueryID;
-  readonly rawResultId: UUID;
+  readonly rawResultId: string;
   readonly providerId: string;
 }
 

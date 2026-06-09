@@ -14,6 +14,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { RuntimeFacade } from "../../../src/runtime/RuntimeFacade.js";
 import { createServices } from "../../../src/runtime/createServices.js";
+import { InMemoryRawResultStore } from "../../../src/storage/InMemoryRawResultStore.js";
 import type { RunService } from "../../../src/api/RunService.js";
 import type { RuntimeExecutor, ExecutionSummary } from "../../../src/runtime/RuntimeExecutor.js";
 import type { DiscoveryStats } from "../../../src/runtime/DiscoveryRunner.js";
@@ -220,7 +221,7 @@ class InMemoryRunStore implements IRunStore {
 class InMemoryRecordStore implements IRecordStore {
   readonly inserted: BusinessRecord[] = [];
   async insert(r: BusinessRecord): Promise<void> { this.inserted.push(r); }
-  async insertMany(rs: readonly BusinessRecord[]): Promise<void> { this.inserted.push(...rs); }
+  async insertMany(rs: readonly BusinessRecord[]): Promise<number> { this.inserted.push(...rs); return rs.length; }
   async getByRunId(runId: string): Promise<readonly BusinessRecord[]> {
     return this.inserted.filter((r) => r.runId === runId);
   }
@@ -253,6 +254,7 @@ function makeStorage(runStore: InMemoryRunStore, recordStore: InMemoryRecordStor
     runStore,
     recordStore,
     runServiceStore: new InMemoryRunServiceStore(runStore),
+    rawResultStore: new InMemoryRawResultStore(),
     recordServiceStore: new InMemoryRecordServiceStore(recordStore),
   };
 }

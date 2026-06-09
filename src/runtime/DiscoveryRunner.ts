@@ -18,9 +18,8 @@
 import type { IProvider, DiscoveryOptions } from "../core/interfaces/IProvider.js";
 import type { ResolvedQuery } from "../core/models/Query.js";
 import type { NormalizationJobPayload } from "../core/models/Job.js";
-import type { UUID } from "../core/types/common.js";
 import type { IQueue } from "../queue/IQueue.js";
-import type { InMemoryRawResultStore } from "../storage/InMemoryRawResultStore.js";
+import type { IRawResultStore } from "../storage/IRawResultStore.js";
 
 // ---------------------------------------------------------------------------
 // Stats
@@ -44,14 +43,14 @@ export interface DiscoveryStats {
 export class DiscoveryRunner {
   constructor(
     private readonly provider: IProvider,
-    private readonly rawResultStore: InMemoryRawResultStore,
+    private readonly rawResultStore: IRawResultStore,
     private readonly normalizationQueue: IQueue<NormalizationJobPayload>,
   ) {}
 
   /**
    * Runs discovery for a single resolved query.
    * Iterates the provider generator, persists each result, and enqueues
-   * a normalization job. Returns stats — never throws on per-result errors.
+   * a normalization job. Returns stats ï¿½ never throws on per-result errors.
    */
   async run(
     query: ResolvedQuery,
@@ -68,9 +67,10 @@ export class DiscoveryRunner {
       resultsCollected++;
 
       try {
-        this.rawResultStore.save(result);
+        await this.rawResultStore.save(result);
         resultsSaved++;
-      } catch {
+      } catch (err) {
+        console.error("[discovery:save-error] providerResultId=" + result.providerResultId + " runId=" + result.runId + " queryId=" + result.queryId + " error=" + (err instanceof Error ? err.message : String(err)) + " stack=" + (err instanceof Error ? err.stack : "n/a"));
         errors++;
         continue;
       }
@@ -79,16 +79,20 @@ export class DiscoveryRunner {
         const payload: NormalizationJobPayload = {
           runId: result.runId,
           queryId: result.queryId,
-          rawResultId: result.providerResultId as UUID,
+          rawResultId: result.providerResultId,
           providerId: result.providerId,
         };
-        await this.normalizationQueue.enqueue(payload);
-        jobsEnqueued++;
+        const enqResult = await this.normalizationQueue.enqueue(payload);
+        if (enqResult.ok) { jobsEnqueued++; } else { console.log('[discovery:enqueue-fail] reason=' + enqResult.error.code + ' rawResultId=' + payload.rawResultId); errors++; }
       } catch {
         errors++;
       }
     }
 
+    const qDepth = await this.normalizationQueue.depth();
+    const qDepthVal = qDepth.ok ? qDepth.value : '?';
+    console.log('[discovery:done] resultsCollected=' + resultsCollected + ' resultsSaved=' + resultsSaved + ' jobsEnqueued=' + jobsEnqueued + ' errors=' + errors + ' queue-depth-after-enqueue=' + qDepthVal);
     return { resultsCollected, resultsSaved, jobsEnqueued, errors };
   }
 }
+

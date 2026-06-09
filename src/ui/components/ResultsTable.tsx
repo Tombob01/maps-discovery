@@ -1,8 +1,10 @@
 import React from 'react';
-import type { BusinessRecord } from '../types/ui';
+import type { BusinessRecord, ExportFormat, Phase } from '../types/ui';
 
 interface Props {
   records: BusinessRecord[];
+  onExport: (format: ExportFormat) => void;
+  exportPhase: Phase;
 }
 
 const COLUMNS = [
@@ -16,7 +18,7 @@ const COLUMNS = [
 
 type ColumnKey = (typeof COLUMNS)[number]['key'];
 
-export function ResultsTable({ records }: Props): React.ReactElement {
+export function ResultsTable({ records, onExport, exportPhase }: Props): React.ReactElement {
   if (records.length === 0) {
     return (
       <div className="rounded-xl border border-neutral-200 bg-white p-10 text-center dark:border-neutral-700 dark:bg-neutral-900">
@@ -26,13 +28,33 @@ export function ResultsTable({ records }: Props): React.ReactElement {
     );
   }
 
+  const exporting = exportPhase === 'loading';
+
   return (
     <div className="rounded-xl border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4">
         <p className="text-[11px] font-medium uppercase tracking-widest text-neutral-500">
-          Results — {records.length} businesses
+          Results &mdash; {records.length} businesses
         </p>
+
+        {/* Export controls */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onExport('csv')}
+            disabled={exporting}
+            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800"
+          >
+            {exporting ? 'Exporting...' : 'Export CSV'}
+          </button>
+          <button
+            onClick={() => onExport('jsonl')}
+            disabled={exporting}
+            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800"
+          >
+            {exporting ? 'Exporting...' : 'Export JSONL'}
+          </button>
+        </div>
       </div>
 
       {/* Table */}
@@ -82,7 +104,7 @@ export function ResultsTable({ records }: Props): React.ReactElement {
   );
 }
 
-// ─── Cell renderer ────────────────────────────────────────────────────────────
+// --- Cell renderer -----------------------------------------------------------
 
 interface CellProps {
   col: ColumnKey;
@@ -94,16 +116,17 @@ function CellContent({ col, record }: CellProps): React.ReactElement {
     case 'rating':
       return record.rating ? (
         <span className="inline-flex items-center gap-1 text-amber-500 dark:text-amber-400">
-          ★ {record.rating}
+          &#9733; {record.rating}
         </span>
       ) : (
-        <span className="text-neutral-400">—</span>
+        <span className="text-neutral-400">&mdash;</span>
       );
 
     case 'website':
       return record.website ? (
         <a
-          href={`https://${record.website}`}
+        
+          href={'https://' + record.website}
           target="_blank"
           rel="noopener noreferrer"
           className="text-violet-600 underline-offset-2 hover:underline dark:text-violet-400"
@@ -112,19 +135,19 @@ function CellContent({ col, record }: CellProps): React.ReactElement {
           {record.website}
         </a>
       ) : (
-        <span className="text-neutral-400">—</span>
+        <span className="text-neutral-400">&mdash;</span>
       );
 
     default:
       return record[col] ? (
         <>{record[col]}</>
       ) : (
-        <span className="text-neutral-400">—</span>
+        <span className="text-neutral-400">&mdash;</span>
       );
   }
 }
 
-// ─── Empty state icon ─────────────────────────────────────────────────────────
+// --- Empty state icon --------------------------------------------------------
 
 function TableIcon() {
   return (

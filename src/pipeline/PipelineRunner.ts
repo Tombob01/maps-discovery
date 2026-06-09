@@ -8,9 +8,9 @@
  * For parallel processing, instantiate multiple runners on the same queue.
  *
  * Lifecycle:
- *   runner.start()  → begins polling loop
- *   runner.stop()   → signals loop to exit after current job
- *   runner.drain()  → processes all currently queued jobs then stops
+ *   runner.start()  ??? begins polling loop
+ *   runner.stop()   ??? signals loop to exit after current job
+ *   runner.drain()  ??? processes all currently queued jobs then stops
  */
 
 import type { IQueue, Job } from "../queue/IQueue.js";
@@ -60,22 +60,40 @@ export class PipelineRunner<T> {
    */
   async drain(): Promise<void> {
     let emptyPolls = 0;
-    const maxEmpty = 2; // drain stops after 2 empty polls in a row
+    const maxEmpty = 2;
+    let dequeued = 0;
+
+    const depthBefore = await this.queue.depth();
+    const snapBefore = (this.queue as any).snapshot?.();
+    console.log('[drain:start] queue-depth=' + (depthBefore.ok ? depthBefore.value : '?') + ' snapshot=' + JSON.stringify(snapBefore));
 
     while (true) {
       const dequeueResult = await this.queue.dequeue();
-      if (!isOk(dequeueResult)) break;
+      if (!isOk(dequeueResult)) {
+        console.log('[drain:dequeue-err] breaking');
+        break;
+      }
 
       const job = dequeueResult.value;
       if (job === null) {
         emptyPolls++;
+        console.log('[drain:empty-poll] count=' + emptyPolls + ' max=' + maxEmpty);
         if (emptyPolls >= maxEmpty) break;
         continue;
       }
 
       emptyPolls = 0;
+      dequeued++;
+      console.log('[drain:dequeue] jobId=' + job.id + ' attempts=' + job.attempts + ' dequeued-so-far=' + dequeued);
       await this.processJob(job);
+
+      const qDepth = await this.queue.depth();
+      console.log('[drain:after-job] jobId=' + job.id + ' queue-depth=' + (qDepth.ok ? qDepth.value : '?') + ' runner-stats=' + JSON.stringify(this.stats));
     }
+
+    const depthAfter = await this.queue.depth();
+    const snapAfter = (this.queue as any).snapshot?.();
+    console.log('[drain:end] dequeued=' + dequeued + ' succeeded=' + this.stats.succeeded + ' skipped=' + this.stats.skipped + ' failed=' + this.stats.failed + ' deadLettered=' + this.stats.deadLettered + ' queue-depth-after=' + (depthAfter.ok ? depthAfter.value : '?') + ' snapshot=' + JSON.stringify(snapAfter));
   }
 
   /**
@@ -142,7 +160,7 @@ export class PipelineRunner<T> {
       }
       await this.queue.ack(job.id);
     } else {
-      // Infrastructure failure — nack for retry or dead-letter
+      // Infrastructure failure ??? nack for retry or dead-letter
       this.stats.failed++;
       const nackResult = await this.queue.nack(job.id, result.error.message);
       if (isOk(nackResult)) {

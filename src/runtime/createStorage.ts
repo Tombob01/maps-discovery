@@ -2,21 +2,13 @@
  * @module runtime/createStorage
  *
  * Assembles the storage layer from configuration.
- *
- * Wiring order:
- *   env.pg
- *   ? PostgresClient
- *   ? PostgresRunRepository + PostgresRecordRepository
- *   ? PostgresRunServiceAdapter + PostgresRecordServiceAdapter
- *
- * No DB connections are opened here � the pool is lazy.
- * Call storage.client.end() for graceful shutdown.
  */
 
 import type { AppConfig } from "../config/env.js";
 import { PostgresClient } from "../storage/PostgresClient.js";
 import { PostgresRunRepository } from "../storage/PostgresRunRepository.js";
 import { PostgresRecordRepository } from "../storage/PostgresRecordRepository.js";
+import { PostgresRawResultRepository } from "../storage/PostgresRawResultRepository.js";
 import {
   PostgresRunServiceAdapter,
   PostgresRecordServiceAdapter,
@@ -27,32 +19,17 @@ import type {
 } from "../storage/PostgresRunServiceAdapter.js";
 import type { IRunStore } from "../storage/IRunStore.js";
 import type { IRecordStore } from "../storage/IRecordStore.js";
-
-// ---------------------------------------------------------------------------
-// Return shape
-// ---------------------------------------------------------------------------
+import type { IRawResultStore } from "../storage/IRawResultStore.js";
 
 export interface AssembledStorage {
-  /** Raw Postgres pool wrapper � call .end() on shutdown. */
   readonly client: PostgresClient;
-  /** storage-layer run store (getById / update). */
   readonly runStore: IRunStore;
-  /** storage-layer record store (insertMany / getByRunId). */
   readonly recordStore: IRecordStore;
-  /** RunService-compatible run store adapter. */
+  readonly rawResultStore: IRawResultStore;
   readonly runServiceStore: RunServiceRunStore;
-  /** RunService-compatible record store adapter. */
   readonly recordServiceStore: RunServiceRecordStore;
 }
 
-// ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
-
-/**
- * Instantiates all storage components from the provided config.
- * Accepts the full AppConfig so callers (bootstrap, tests) control the source.
- */
 export function createStorage(config: AppConfig): AssembledStorage {
   const { pg } = config;
 
@@ -69,6 +46,7 @@ export function createStorage(config: AppConfig): AssembledStorage {
 
   const runStore = new PostgresRunRepository(client);
   const recordStore = new PostgresRecordRepository(client);
+  const rawResultStore = new PostgresRawResultRepository(client);
 
   const runServiceStore = new PostgresRunServiceAdapter(runStore);
   const recordServiceStore = new PostgresRecordServiceAdapter(recordStore);
@@ -77,6 +55,7 @@ export function createStorage(config: AppConfig): AssembledStorage {
     client,
     runStore,
     recordStore,
+    rawResultStore,
     runServiceStore,
     recordServiceStore,
   };

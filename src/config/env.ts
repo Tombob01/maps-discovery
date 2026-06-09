@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @module config/env
  *
  * Typed, validated runtime configuration loaded from environment variables.
@@ -55,12 +55,12 @@ const booleanString = zEnum([
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 const EnvSchema = zObject({
-  // ── Runtime ──────────────────────────────────────────────────────────────
+  // â”€â”€ Runtime â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   NODE_ENV: zEnum(["development", "test", "production"] as const).default(
     "development",
   ),
 
-  // ── PostgreSQL ───────────────────────────────────────────────────────────
+  // â”€â”€ PostgreSQL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   DATABASE_URL: nonEmptyString.optional(),
   PG_HOST: nonEmptyString.default("localhost"),
   PG_PORT: portNumber.default(5432),
@@ -74,7 +74,7 @@ const EnvSchema = zObject({
   PG_LOG_QUERIES: zEnum(["none", "slow", "all"] as const).default("none"),
   PG_SLOW_QUERY_THRESHOLD_MS: positiveInt.default(500),
 
-  // ── Redis ────────────────────────────────────────────────────────────────
+  // â”€â”€ Redis â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   REDIS_URL: nonEmptyString.optional(),
   REDIS_HOST: nonEmptyString.default("localhost"),
   REDIS_PORT: portNumber.default(6379),
@@ -84,14 +84,14 @@ const EnvSchema = zObject({
   REDIS_COMMAND_TIMEOUT_MS: positiveInt.default(3_000),
   REDIS_MAX_RETRIES: positiveInt.default(3),
 
-  // ── BullMQ ───────────────────────────────────────────────────────────────
+  // â”€â”€ BullMQ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   BULLMQ_DISCOVERY_RATE_LIMIT_MAX: positiveInt.default(2),
   BULLMQ_DISCOVERY_RATE_LIMIT_DURATION_MS: positiveInt.default(60_000),
   BULLMQ_DISCOVERY_CONCURRENCY: positiveInt.default(1),
   BULLMQ_STALL_INTERVAL_MS: positiveInt.default(30_000),
   BULLMQ_MAX_RETRIES: positiveInt.default(5),
 
-  // ── Query engine ─────────────────────────────────────────────────────────
+  // â”€â”€ Query engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   QUERY_ENGINE_NICHE_DICTS_DIR: nonEmptyString.default(
     "./data/dictionaries/niches",
   ),
@@ -101,14 +101,14 @@ const EnvSchema = zObject({
     "synonym,modifier,plural,geo",
   ),
 
-  // ── Playwright ───────────────────────────────────────────────────────────
+  // â”€â”€ Playwright â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   PLAYWRIGHT_HEADLESS: booleanString.default(true as unknown as never),
   PLAYWRIGHT_SLOW_MO_MS: nonNegativeInt.default(150),
   PLAYWRIGHT_TIMEOUT_MS: positiveInt.default(30_000),
   PLAYWRIGHT_LOCALE: nonEmptyString.default("en-US"),
   PLAYWRIGHT_TIMEZONE: nonEmptyString.default("Africa/Lagos"),
 
-  // ── Logging ──────────────────────────────────────────────────────────────
+  // â”€â”€ Logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   LOG_LEVEL: zEnum([
     "trace",
     "debug",
@@ -121,14 +121,22 @@ const EnvSchema = zObject({
   LOG_FORMAT: zEnum(["pretty", "json"] as const).default("pretty"),
   LOG_STACK_TRACES: booleanString.default(true as unknown as never),
 
-  // ── Export ───────────────────────────────────────────────────────────────
+  // â”€â”€ Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   
   // -- AI -------------------------------------------------------------------
   GROQ_API_KEY: nonEmptyString.optional(),
+
+  // -- Geocoding -------------------------------------------------------------
+  NOMINATIM_ENABLED: booleanString.default(false as unknown as never),
+  NOMINATIM_USER_AGENT: nonEmptyString.default("maps-discovery/1.0"),
+
+  // -- Watchdog -------------------------------------------------------------
+  WATCHDOG_MAX_RUN_AGE_MS: positiveInt.default(7_200_000),
+  WATCHDOG_SCAN_INTERVAL_MS: positiveInt.default(300_000),
 });
 
 // ---------------------------------------------------------------------------
-// Parsed and shaped config — structured for consumption
+// Parsed and shaped config â€” structured for consumption
 // ---------------------------------------------------------------------------
 
 export type RawEnv = ZInput<typeof EnvSchema>;
@@ -201,12 +209,22 @@ export interface AppConfig {
     readonly format: "pretty" | "json";
     readonly stackTraces: boolean;
   };
-
-
   readonly ai: {
     readonly groq: {
       readonly apiKey: string | undefined;
     };
+  };
+
+  readonly geocoding: {
+    readonly nominatim: {
+      readonly enabled: boolean;
+      readonly userAgent: string;
+    };
+  };
+
+  readonly watchdog: {
+    readonly maxRunAgeMs: number;
+    readonly scanIntervalMs: number;
   };
 }
 
@@ -297,6 +315,18 @@ function buildConfig(parsed: ParsedEnv): AppConfig {
         apiKey: parsed.GROQ_API_KEY,
       },
     },
+
+    geocoding: {
+      nominatim: {
+        enabled: parsed.NOMINATIM_ENABLED,
+        userAgent: parsed.NOMINATIM_USER_AGENT,
+      },
+    },
+
+    watchdog: {
+      maxRunAgeMs: parsed.WATCHDOG_MAX_RUN_AGE_MS,
+      scanIntervalMs: parsed.WATCHDOG_SCAN_INTERVAL_MS,
+    },
   };
 }
 
@@ -311,7 +341,7 @@ function buildConfig(parsed: ParsedEnv): AppConfig {
  * Subsequent calls return the cached result.
  *
  * Throws `EnvValidationError` if any variable fails validation.
- * This is intentional — a misconfigured app should refuse to start.
+ * This is intentional â€” a misconfigured app should refuse to start.
  */
 export function getConfig(): AppConfig {
   if (_config !== undefined) return _config;
@@ -332,7 +362,7 @@ export function getConfig(): AppConfig {
 }
 
 /**
- * Lazily-evaluated singleton — the standard import for all application code.
+ * Lazily-evaluated singleton â€” the standard import for all application code.
  *
  * @example
  * import { env } from "../config/env.js";
@@ -363,3 +393,7 @@ export class EnvValidationError extends Error {
     Object.setPrototypeOf(this, EnvValidationError.prototype);
   }
 }
+
+
+
+

@@ -224,9 +224,9 @@ export class PostgresRecordRepository implements IRecordStore {
   // insertMany — single multi-row INSERT for efficiency
   // ---------------------------------------------------------------------------
 
-  async insertMany(records: readonly BusinessRecord[]): Promise<void> {
+  async insertMany(records: readonly BusinessRecord[]): Promise<number> {
     console.log("[insertMany] records:", records.length, "first runId:", records[0]?.runId, "first queryId:", records[0]?.queryId);
-    if (records.length === 0) return;
+    if (records.length === 0) return 0;
 
     const params: unknown[] = [];
     const valueClauses: string[] = [];
@@ -239,12 +239,14 @@ export class PostgresRecordRepository implements IRecordStore {
       params.push(...recordToParams(record));
     }
 
-    await this.db.query(
+    const pgResult = await this.db.query(
       `INSERT INTO businesses (${INSERT_COLUMNS})
        VALUES ${valueClauses.join(", ")}
        ON CONFLICT (fingerprint) DO NOTHING`,
       params,
-    );
+    );
+    const actualInserted = pgResult.rowCount ?? 0;
+    return actualInserted;
   }
 
   // ---------------------------------------------------------------------------
@@ -263,6 +265,19 @@ export class PostgresRecordRepository implements IRecordStore {
   }
 
   // ---------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------
+  // getByRunIdPaginated
+  // ---------------------------------------------------------------------------
+
+  async getByRunIdPaginated(runId: string, limit: number, offset: number): Promise<readonly BusinessRecord[]> {
+    const { rows } = await this.db.query<BusinessRecordRow>(
+      'SELECT * FROM businesses WHERE run_id = $1 ORDER BY collected_at ASC LIMIT $2 OFFSET $3',
+      [runId, limit, offset],
+    );
+    return rows.map(rowToRecord);
+  }
+
+    // ---------------------------------------------------------------------------
   // countByRunId
   // ---------------------------------------------------------------------------
 
@@ -277,3 +292,4 @@ export class PostgresRecordRepository implements IRecordStore {
     return row !== undefined ? parseInt(row.count, 10) : 0;
   }
 }
+

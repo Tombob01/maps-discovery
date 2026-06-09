@@ -3,7 +3,7 @@
  * Implements IRuntimeFacade via fetch() against the Hono HTTP server.
  *
  * Maps between the UI's simplified types and the backend's richer shapes.
- * No business logic — pure adapter.
+ * No business logic � pure adapter.
  */
 
 import type {
@@ -16,6 +16,7 @@ import type {
   ExecutionSummary,
   Run,
   BusinessRecord,
+  ExportFormat,
 } from '../types/ui';
 
 // ---------------------------------------------------------------------------
@@ -75,7 +76,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // ---------------------------------------------------------------------------
-// Backend response shapes (richer than UI types — mapped below)
+// Backend response shapes (richer than UI types � mapped below)
 // ---------------------------------------------------------------------------
 
 interface BackendExpandedKeyword {
@@ -95,6 +96,7 @@ interface BackendRun {
   niche: string;
   location: string;
   startedAt: string;
+  currentSeed?: string | null;
   completedAt: string | null;
   stats: {
     queriesGenerated: number;
@@ -128,28 +130,13 @@ interface BackendRecordPage {
   hasMore: boolean;
 }
 
-interface BackendExecutionSummary {
-  discovery: { resultsSaved: number; jobsEnqueued: number };
-  normalization: {
-    queriesGenerated: number;
-    queriesDispatched: number;
-    rawResultsFound: number;
-    recordsNormalized: number;
-    recordsUnique: number;
-    recordsDuplicate: number;
-    recordsExported: number;
-    errors: number;
-  };
-}
-
 // ---------------------------------------------------------------------------
-// Mappers: backend → UI types
+// Mappers: backend -> UI types
 // ---------------------------------------------------------------------------
 
 function toUISuggestions(backend: BackendExpansionResponse): ExpansionResponse {
   return {
     original: backend.original,
-    // UI expects string[] — extract just the keyword string
     suggestions: backend.suggestions.map((s) => s.keyword),
   };
 }
@@ -163,6 +150,7 @@ function toUIRun(backend: BackendRun): Run {
       normalized: backend.stats.recordsNormalized,
       failed: backend.stats.errors,
     },
+    ...(backend.currentSeed !== undefined ? { currentSeed: backend.currentSeed } : {}),
   };
 }
 
@@ -178,19 +166,6 @@ function toUIRecord(backend: BackendRecord): BusinessRecord {
   };
 }
 
-function toUIExecutionSummary(backend: BackendExecutionSummary): ExecutionSummary {
-  return {
-    discovery: {
-      resultsFound: backend.discovery.resultsSaved,
-      pagesScraped: 0,
-    },
-    normalization: {
-      processed: backend.normalization.recordsNormalized,
-      failed: backend.normalization.errors,
-    },
-  };
-}
-
 // ---------------------------------------------------------------------------
 // HTTP client
 // ---------------------------------------------------------------------------
@@ -200,7 +175,6 @@ export const httpClient: IRuntimeFacade = {
     const body: Record<string, unknown> = { keyword: params.keyword };
     if (params.location !== undefined) body['location'] = params.location;
     if (params.limit !== undefined) body['limit'] = params.limit;
-
     const data = await apiFetch<BackendExpansionResponse>('/api/expand', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -220,8 +194,7 @@ export const httpClient: IRuntimeFacade = {
     const seeds = params.keywords.length > 0
       ? params.keywords.map(kw => ({ keyword: kw, location: params.query.location }))
       : [{ keyword: params.query.niche, location: params.query.location }];
-    const data = await apiFetch<BackendExecutionSummary>(
-      `/api/runs/${params.runId}/execute`,
+    await apiFetch<{ runId: string; status: string }>(`/api/runs/${params.runId}/execute`,
       {
         method: 'POST',
         body: JSON.stringify({
@@ -230,7 +203,10 @@ export const httpClient: IRuntimeFacade = {
         }),
       },
     );
-    return toUIExecutionSummary(data);
+    return {
+      discovery: { resultsFound: 0, pagesScraped: 0 },
+      normalization: { processed: 0, failed: 0 },
+    };
   },
 
   async getRun(runId: string): Promise<Run> {
@@ -239,10 +215,47 @@ export const httpClient: IRuntimeFacade = {
   },
 
   async listRecords(runId: string): Promise<BusinessRecord[]> {
-    const data = await apiFetch<BackendRecordPage>(
-      `/api/runs/${runId}/records?page=1&pageSize=100`,
-    );
-    return data.items.map(toUIRecord);
+    const allRecords: BusinessRecord[] = [];
+    let page = 1;
+    const pageSize = 100;
+    let hasMore = true;
+    while (hasMore) {
+      const data = await apiFetch<BackendRecordPage>(`/api/runs/${runId}/records?page=${page}&pageSize=${pageSize}`);
+      allRecords.push(...data.items.map(toUIRecord));
+      hasMore = data.hasMore;
+      page += 1;
+    }
+    return allRecords;
+  },
+
+  async exportRun(runId: string, format: ExportFormat): Promise<void> {
+    const url = `${API_BASE}/api/runs/${runId}/export?format=${format}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      let code = 'EXPORT_FAILED';
+      let message = `Export failed with status `;
+      try {
+        const body = await res.json() as { ok: false; error: { code: string; message: string } };
+        code = body.error.code;
+        message = body.error.message;
+      } catch { /* ignore parse failure */ }
+      throw new ApiError(code, message, res.status);
+    }
+    const blob = await res.blob();
+    const ext = format === 'csv' ? 'csv' : 'jsonl';
+    const disposition = res.headers.get('Content-Disposition') ?? '';
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match?.[1] ?? `export-${runId}.${ext}`;
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(objectUrl);
   },
 };
+
+
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @module query-engine
  *
  * Public API surface for the query-engine package.
@@ -18,7 +18,7 @@
  *   - Raw YAML types (RawNicheDictionaryFile, etc.)
  */
 
-// ── Factory (primary entry point) ──────────────────────────────────────────
+// â”€â”€ Factory (primary entry point) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export {
   createQueryEngine,
   buildQueryEngineConfig,
@@ -28,20 +28,20 @@ export type {
   AssembledQueryEngine,
 } from "./QueryEngineFactory.js";
 
-// ── Core implementations ───────────────────────────────────────────────────
+// â”€â”€ Core implementations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export { QueryEngine } from "./QueryEngine.js";
 export { QueryBuilder } from "./QueryBuilder.js";
 export { QueryExpander } from "./QueryExpander.js";
 export { QueryCanonicalizer } from "./QueryCanonicalizer.js";
 export { ResolvedQueryFactory } from "./ResolvedQueryFactory.js";
 
-// ── Geo resolvers ──────────────────────────────────────────────────────────
+// â”€â”€ Geo resolvers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export {
   PassthroughGeoResolver,
   StaticCoordinateGeoResolver,
 } from "./GeoResolver.js";
 
-// ── Expansion strategies ───────────────────────────────────────────────────
+// â”€â”€ Expansion strategies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export {
   BaseExpansionStrategy,
   SynonymExpansionStrategy,
@@ -51,14 +51,14 @@ export {
 } from "./strategies/index.js";
 export type { StrategyCandidate } from "./strategies/index.js";
 
-// ── Dictionary loaders ─────────────────────────────────────────────────────
+// â”€â”€ Dictionary loaders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export {
   loadNicheDictionaries,
   loadGeoDictionaries,
   loadAllDictionaries,
 } from "./dictionaries/DictionaryLoader.js";
 
-// ── Dictionary types ───────────────────────────────────────────────────────
+// â”€â”€ Dictionary types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export type {
   NicheDictionary,
   NicheTerm,
@@ -72,7 +72,7 @@ export type {
   GeoDictionaryIndex,
 } from "./dictionaries/GeoDictionary.js";
 
-// ── Config ─────────────────────────────────────────────────────────────────
+// â”€â”€ Config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export { QUERY_ENGINE_DEFAULTS } from "./config/QueryEngineConfig.js";
 export type {
   QueryEngineConfig,
@@ -81,3 +81,11 @@ export type {
   ExpansionConfig,
   GeoResolverConfig,
 } from "./config/QueryEngineConfig.js";
+
+// -- Nominatim geo resolver -------------------------------------------------
+export { NominatimGeoResolver } from "./NominatimGeoResolver.js";
+export type { NominatimConfig } from "./NominatimGeoResolver.js";
+
+// -- Geo cache interface ----------------------------------------------------
+export { InMemoryGeoCache } from "./IGeoCache.js";
+export type { IGeoCache } from "./IGeoCache.js";

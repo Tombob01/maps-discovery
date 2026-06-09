@@ -22,11 +22,25 @@ import {
   DEFAULT_GOOGLE_MAPS_POLICY,
 } from "../providers/google-maps/index.js";
 import { env } from "../config/env.js";
+import { RunWatchdog } from "../runtime/RunWatchdog.js";
 
 const PORT = Number(process.env["PORT"] ?? 3001);
 
 async function main(): Promise<void> {
   const container = bootstrap();
+
+  // -- Watchdog -------------------------------------------------------------
+  const watchdog = new RunWatchdog(
+    container.storage.runStore,
+    container.services.lifecycle,
+    {
+      maxRunAgeMs: env.watchdog.maxRunAgeMs,
+      scanIntervalMs: env.watchdog.scanIntervalMs,
+    },
+  );
+  await watchdog.recoverStaleRuns();
+  const stopWatchdog = watchdog.start();
+  console.log("[api] Run watchdog started");
 
   // ── Build a ScrapingPolicy driven by env vars ───────────────────────────
   // Spreads DEFAULT_GOOGLE_MAPS_POLICY and overrides only the browser block
@@ -68,6 +82,7 @@ async function main(): Promise<void> {
   // Shutdown order: HTTP server → Playwright browser → Postgres client.
   const shutdown = async (): Promise<void> => {
     console.log("[api] Shutting down...");
+    stopWatchdog();
     server.close();
     await googleMapsProvider.shutdown(); // closes browser + context
     await container.storage.client.end();
@@ -82,4 +97,7 @@ main().catch((err) => {
   console.error("[api] Fatal error:", err);
   process.exit(1);
 });
+
+
+
 

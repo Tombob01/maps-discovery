@@ -77,8 +77,13 @@ class StubRecordStore implements IRecordStore {
   async insert(r: BusinessRecord): Promise<void> {
     this.inserted.push(r);
   }
-  async insertMany(rs: readonly BusinessRecord[]): Promise<void> {
+  async insertMany(rs: readonly BusinessRecord[]): Promise<number> {
     this.inserted.push(...rs);
+    return rs.length;
+  }
+  async getByRunIdPaginated(runId: string, limit: number, offset: number): Promise<readonly BusinessRecord[]> {
+    const all = this.inserted.filter(r => r.runId === runId);
+    return all.slice(offset, offset + limit);
   }
   async getByRunId(_id: string): Promise<readonly BusinessRecord[]> {
     return this.inserted;

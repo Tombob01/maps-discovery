@@ -239,17 +239,20 @@ describe("POST /api/runs/:id/execute", () => {
     facade = makeMockFacade();
   });
 
-  it("returns 200 with execution summary", async () => {
+  it("returns 202 with running status immediately", async () => {
     const app = createServer(facade);
     const res = await request(app, "POST", "/api/runs/run-test-001/execute", {
       provider: "mock",
       seeds: [{ keyword: "plumbers", location: "Austin TX" }],
     });
-    const body = await res.json() as { ok: boolean; data: unknown };
+    const body = await res.json() as { ok: boolean; data: { runId: string; status: string } };
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
     expect(body.ok).toBe(true);
-    expect(facade.executeFromSeed).toHaveBeenCalled();
+    expect(body.data.runId).toBe("run-test-001");
+    expect(body.data.status).toBe("running");
+    // Allow background microtask to complete before next test
+    await new Promise(r => setTimeout(r, 0));
   });
 
   it("passes keyword and location to executeFromSeed", async () => {
@@ -258,6 +261,8 @@ describe("POST /api/runs/:id/execute", () => {
       provider: "google-maps",
       seeds: [{ keyword: "dentists", location: "Lagos, Nigeria" }],
     });
+    // Drain microtask queue so background executeFromSeed fires
+    await new Promise(r => setTimeout(r, 10));
     expect(facade.executeFromSeed).toHaveBeenCalledWith(
       expect.objectContaining({
         keyword: "dentists",
@@ -292,3 +297,139 @@ describe("POST /api/runs/:id/execute", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("GET /api/runs/:id — currentSeed", () => {
+  it("returns null for currentSeed when no run is executing", async () => {
+    const facade = makeMockFacade();
+    const app = createServer(facade);
+    const res = await request(app, "GET", "/api/runs/run-test-001");
+    const body = await res.json() as { ok: boolean; data: { currentSeed: string | null } };
+    expect(res.status).toBe(200);
+    expect(body.data.currentSeed).toBeNull();
+  });
+
+  it("exposes currentSeed while a seed is actively executing", async () => {
+    const facade = makeMockFacade();
+    let resolveSeed!: () => void;
+    (facade.executeFromSeed as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise<void>(resolve => { resolveSeed = resolve; })
+    );
+    const app = createServer(facade);
+    void app.request("/api/runs/run-test-001/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "mock", seeds: [{ keyword: "plumbers", location: "Austin TX" }] }),
+    });
+    await new Promise(r => setTimeout(r, 10));
+    const res = await request(app, "GET", "/api/runs/run-test-001");
+    const body = await res.json() as { ok: boolean; data: { currentSeed: string | null } };
+    expect(body.data.currentSeed).toBe("plumbers");
+    resolveSeed();
+    await new Promise(r => setTimeout(r, 10));
+  });
+
+  it("currentSeed is null after run completes", async () => {
+    const facade = makeMockFacade();
+    const app = createServer(facade);
+    await app.request("/api/runs/run-test-001/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "mock", seeds: [{ keyword: "plumbers", location: "Austin TX" }] }),
+    });
+    await new Promise(r => setTimeout(r, 20));
+    const res = await request(app, "GET", "/api/runs/run-test-001");
+    const body = await res.json() as { ok: boolean; data: { currentSeed: string | null } };
+    expect(body.data.currentSeed).toBeNull();
+  });
+});
+
+describe("POST /api/runs/:id/execute — seed failure isolation", () => {
+  it("continues to seed #3 when seed #2 throws", async () => {
+    const facade = makeMockFacade();
+    const executionOrder: string[] = [];
+
+    (facade.executeFromSeed as ReturnType<typeof vi.fn>)
+      .mockImplementationOnce(async (_opts: { keyword: string }) => {
+        executionOrder.push("plumbers");
+      })
+      .mockImplementationOnce(async (_opts: { keyword: string }) => {
+        executionOrder.push("drain cleaning");
+        throw new Error("provider crashed");
+      })
+      .mockImplementationOnce(async (_opts: { keyword: string }) => {
+        executionOrder.push("water heater repair");
+      });
+
+    const app = createServer(facade);
+    await app.request("/api/runs/run-001/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "mock",
+        seeds: [
+          { keyword: "plumbers", location: "Austin TX" },
+          { keyword: "drain cleaning", location: "Austin TX" },
+          { keyword: "water heater repair", location: "Austin TX" },
+        ],
+      }),
+    });
+
+    // Allow background loop to complete all three seeds
+    await new Promise(r => setTimeout(r, 30));
+
+    // All three seeds were attempted
+    expect(executionOrder).toEqual(["plumbers", "drain cleaning", "water heater repair"]);
+    // facade called three times despite seed #2 throwing
+    expect(facade.executeFromSeed).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("POST /api/runs/:id/execute ï¿½ concurrency guard", () => {
+  it("returns 409 when a discovery run is already in progress", async () => {
+    const facade = makeMockFacade();
+    // Make executeFromSeed hang so the first request never completes
+    let resolveFirst: () => void;
+    (facade.executeFromSeed as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise<typeof import("../../../src/runtime/RuntimeExecutor.js").ExecutionSummary>(
+        (resolve) => { resolveFirst = () => resolve({ discovery: { resultsSaved: 0, jobsEnqueued: 0, resultsCollected: 0, errors: 0 }, normalization: { queriesGenerated: 0, queriesDispatched: 0, rawResultsFound: 0, recordsNormalized: 0, recordsUnique: 0, recordsDuplicate: 0, recordsExported: 0, errors: 0 } }); }
+      )
+    );
+
+    const app = createServer(facade);
+    const body = JSON.stringify({ provider: "mock", seeds: [{ keyword: "plumbers", location: "Lagos" }] });
+
+    // Fire first request ï¿½ does not await, intentionally hangs
+    const first = app.request("/api/runs/run-001/execute", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+
+    // Small delay to ensure first request has set isExecuting = true
+    await new Promise(r => setTimeout(r, 10));
+
+    // Fire second request while first is still running
+    const second = await app.request("/api/runs/run-001/execute", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+    expect(second.status).toBe(409);
+    const secondBody = await second.json() as { ok: boolean; error: { code: string } };
+    expect(secondBody.ok).toBe(false);
+    expect(secondBody.error.code).toBe("CONFLICT");
+
+    // Clean up ï¿½ resolve the first request
+    resolveFirst!();
+    await first;
+  });
+
+  it("accepts a new request after the previous run completes", async () => {
+    const facade = makeMockFacade();
+    const app = createServer(facade);
+    const body = JSON.stringify({ provider: "mock", seeds: [{ keyword: "plumbers", location: "Lagos" }] });
+
+    // First request completes normally
+    const first = await app.request("/api/runs/run-001/execute", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+    expect(first.status).toBe(202);
+    // Wait for background promise .finally() to reset isExecuting
+    await new Promise(r => setTimeout(r, 10));
+    // Second request should also succeed
+    const second = await app.request("/api/runs/run-001/execute", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+    expect(second.status).toBe(202);
+  });
+});
+
+

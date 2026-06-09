@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @module pipeline/RunCoordinator
  *
  * Coordinates the full lifecycle of a single pipeline run:
@@ -68,7 +68,7 @@ export class RunCoordinator {
   /**
    * Executes all normalization jobs for a run end-to-end:
    *
-   *   pending → running → (drain queue) → complete | failed
+   *   pending -> running -> (drain queue) -> complete | failed
    *
    * Returns the final RunStats collected during this execution.
    * Throws (after persisting "failed") if an unrecoverable error occurs.
@@ -78,7 +78,7 @@ export class RunCoordinator {
     const runningRun = await this.lifecycle.start(runId);
 
     // Accumulate stats locally; flush to DB via incrementStats after each record.
-    // This avoids N separate DB round-trips for the final stats write —
+    // This avoids N separate DB round-trips for the final stats write -
     // the complete() call writes them all at once.
     let accumulated: RunStats = { ...runningRun.stats };
 
@@ -90,21 +90,39 @@ export class RunCoordinator {
         record: BusinessRecord,
         payload: NormalizationJobPayload,
       ) => {
-        // Persist the record (idempotent — ON CONFLICT DO NOTHING)
-        await this.lifecycle.persistRecords([record]);
+        // Persist the record (idempotent - ON CONFLICT DO NOTHING)
+        const inserted = await this.lifecycle.persistRecords([record]);
 
-        // Increment stats in DB so a crash mid-run leaves accurate counts
+        // Every successful normalization counts, regardless of insert outcome.
         await this.lifecycle.incrementStats(payload.runId, {
           recordsNormalized: 1,
           rawResultsFound: 1,
         });
-
-        // Mirror in local accumulator for the final complete() call
         accumulated = {
           ...accumulated,
           recordsNormalized: accumulated.recordsNormalized + 1,
           rawResultsFound: accumulated.rawResultsFound + 1,
         };
+
+        if (inserted > 0) {
+          // New row written to DB
+          await this.lifecycle.incrementStats(payload.runId, {
+            recordsUnique: 1,
+          });
+          accumulated = {
+            ...accumulated,
+            recordsUnique: accumulated.recordsUnique + 1,
+          };
+        } else {
+          // Fingerprint already existed - cross-run duplicate
+          await this.lifecycle.incrementStats(payload.runId, {
+            recordsDuplicate: 1,
+          });
+          accumulated = {
+            ...accumulated,
+            recordsDuplicate: accumulated.recordsDuplicate + 1,
+          };
+        }
       },
     });
 
@@ -120,13 +138,13 @@ export class RunCoordinator {
     try {
       await runner.drain();
     } catch (err) {
-      // Unrecoverable error — persist failed status with whatever stats we have
+      // Unrecoverable error - persist failed status with whatever stats we have
       await this.lifecycle
         .fail(runId, {
           errors: accumulated.errors + 1,
         })
         .catch(() => {
-          // Best-effort — don't mask the original error
+          // Best-effort - don't mask the original error
         });
       throw err;
     }

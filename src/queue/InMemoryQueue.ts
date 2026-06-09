@@ -158,4 +158,14 @@ export class InMemoryQueue<T> implements IQueue<T> {
     this.jobs.clear();
     this.dedupeKeys.clear();
   }
+
+  snapshot(): { visible: number; invisible: number; deadLetter: number; total: number } {
+    let visible = 0, invisible = 0, deadLetter = 0;
+    for (const internal of this.jobs.values()) {
+      if (internal.deadLetter) deadLetter++;
+      else if (internal.visible) visible++;
+      else invisible++;
+    }
+    return { visible, invisible, deadLetter, total: this.jobs.size };
+  }
 }

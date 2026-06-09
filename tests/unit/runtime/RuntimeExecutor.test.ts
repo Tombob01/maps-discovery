@@ -1,3 +1,4 @@
+import { InMemoryRawResultStore } from "../../../src/storage/InMemoryRawResultStore.js";
 /**
  * @module tests/unit/runtime/RuntimeExecutor
  *
@@ -135,7 +136,7 @@ class InMemoryRunStore implements IRunStore {
 class InMemoryRecordStore implements IRecordStore {
   readonly inserted: BusinessRecord[] = [];
   async insert(r: BusinessRecord): Promise<void> { this.inserted.push(r); }
-  async insertMany(rs: readonly BusinessRecord[]): Promise<void> { this.inserted.push(...rs); }
+  async insertMany(rs: readonly BusinessRecord[]): Promise<number> { this.inserted.push(...rs); return rs.length; }
   async getByRunId(runId: string): Promise<readonly BusinessRecord[]> {
     return this.inserted.filter((r) => r.runId === runId);
   }
@@ -170,6 +171,7 @@ function makeStorage(
     client: {} as AssembledStorage["client"],
     runStore,
     recordStore,
+    rawResultStore: new InMemoryRawResultStore(),
     runServiceStore: new InMemoryRunServiceStore(runStore),
     recordServiceStore: new InMemoryRecordServiceStore(recordStore),
   };

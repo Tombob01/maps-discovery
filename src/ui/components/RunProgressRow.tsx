@@ -6,6 +6,7 @@ interface Props {
   runStatus: RunStatus;
   progress: number;
   stats: RunStats | null;
+  currentSeed?: string | null;
 }
 
 const STATUS_CONFIG: Record<
@@ -43,6 +44,7 @@ export function RunProgressRow({
   runStatus,
   progress,
   stats,
+  currentSeed,
 }: Props): React.ReactElement {
   const cfg = STATUS_CONFIG[runStatus];
   const pct = Math.min(100, Math.max(0, Math.round(progress)));
@@ -91,6 +93,11 @@ export function RunProgressRow({
         />
       </div>
       <p className="mt-1 text-right font-mono text-[11px] text-neutral-400">{pct}%</p>
+      {runStatus === 'running' && currentSeed != null && currentSeed !== '' && (
+        <p className="mt-2 text-xs text-violet-600 dark:text-violet-400">
+          Current keyword: {currentSeed}
+        </p>
+      )}
 
       {/* Stats grid */}
       {stats && (
@@ -129,3 +136,6 @@ function StatCard({ label, value, highlight = false }: StatCardProps) {
     </div>
   );
 }
+
+
+

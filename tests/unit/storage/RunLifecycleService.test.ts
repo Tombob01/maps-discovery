@@ -73,8 +73,9 @@ class StubRecordStore implements IRecordStore {
     this.insertedBatches.push([record]);
   }
 
-  async insertMany(records: readonly BusinessRecord[]): Promise<void> {
+  async insertMany(records: readonly BusinessRecord[]): Promise<number> {
     this.insertedBatches.push([...records]);
+    return records.length;
   }
 
   async getByRunId(_runId: string): Promise<readonly BusinessRecord[]> {
@@ -412,6 +413,18 @@ describe("RunLifecycleService — persistRecords()", () => {
     expect(recordStore.insertedBatches[0]).toHaveLength(2);
   });
 
+
+  it("returns 0 when all records are conflict-skipped by the store", async () => {
+    const skippingStore: IRecordStore = {
+      async insert(_r: BusinessRecord): Promise<void> {},
+      async insertMany(_rs: readonly BusinessRecord[]): Promise<number> { return 0; },
+      async getByRunId(_id: string): Promise<readonly BusinessRecord[]> { return []; },
+      async countByRunId(_id: string): Promise<number> { return 0; },
+    };
+    const svc = new RunLifecycleService(new StubRunStore(), skippingStore);
+    const count = await svc.persistRecords([makeRecord("x"), makeRecord("y")]);
+    expect(count).toBe(0);
+  });
   it("preserves all record IDs across batches", async () => {
     const ids = ["p1", "p2", "p3", "p4", "p5"];
     const records = ids.map(makeRecord);

@@ -15,6 +15,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { createServices } from "../../../src/runtime/createServices.js";
+import { InMemoryRawResultStore } from "../../../src/storage/InMemoryRawResultStore.js";
 import { InMemoryQueue } from "../../../src/queue/InMemoryQueue.js";
 import type {
   NormalizationJobPayload,
@@ -61,8 +62,9 @@ class InMemoryRecordStore implements IRecordStore {
   async insert(record: BusinessRecord): Promise<void> {
     this.inserted.push(record);
   }
-  async insertMany(records: readonly BusinessRecord[]): Promise<void> {
+  async insertMany(records: readonly BusinessRecord[]): Promise<number> {
     this.inserted.push(...records);
+    return records.length;
   }
   async getByRunId(runId: string): Promise<readonly BusinessRecord[]> {
     return this.inserted.filter((r) => r.runId === runId);
@@ -118,6 +120,7 @@ function makeStorage(
     runStore,
     recordStore,
     runServiceStore: new InMemoryRunServiceStore(runStore),
+    rawResultStore: new InMemoryRawResultStore(),
     recordServiceStore: new InMemoryRecordServiceStore(recordStore),
   };
 }
@@ -202,7 +205,7 @@ describe("runtime execution path � createServices() + coordinator.execute()", 
 
     // 2. Save a raw result into the bridge store
     const rawResult = makeProviderResult({ runId });
-    services.rawResultStore.save(rawResult);
+    await services.rawResultStore.save(rawResult);
 
     // 3. Enqueue a normalization job
     await services.normalizationQueue.enqueue({
@@ -276,17 +279,4 @@ describe("runtime execution path � createServices() + coordinator.execute()", 
     expect(stats.recordsNormalized).toBe(0);
   });
 
-  it("rawResultStore.clearRun() frees memory after execution", async () => {
-    const storage = makeStorage(runStore, recordStore);
-    const services = createServices(storage, { normalizationQueue: queue });
-
-    const rawResult = makeProviderResult({
-      runId: "run-cleanup" as RunID,
-    });
-    services.rawResultStore.save(rawResult);
-    expect(services.rawResultStore.size).toBe(1);
-
-    services.rawResultStore.clearRun("run-cleanup" as RunID);
-    expect(services.rawResultStore.size).toBe(0);
-  });
 });

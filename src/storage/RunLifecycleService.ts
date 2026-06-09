@@ -192,8 +192,8 @@ export class RunLifecycleService {
     let written = 0;
     for (let i = 0; i < records.length; i += this.batchSize) {
       const batch = records.slice(i, i + this.batchSize);
-      await this.recordStore.insertMany(batch);
-      written += batch.length;
+      const inserted = await this.recordStore.insertMany(batch);
+      written += inserted;
     }
 
     return written;

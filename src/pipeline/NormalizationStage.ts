@@ -59,7 +59,7 @@ export class NormalizationStage implements IPipelineStage<NormalizationJobPayloa
     // 1. Fetch raw result
     let rawResult: ProviderResult | null;
     try {
-    console.log("[norm] payload:", JSON.stringify({runId: payload.runId, queryId: payload.queryId, rawResultId: payload.rawResultId, providerId: payload.providerId}));
+    console.log("[norm] payload:", JSON.stringify({runId: payload.runId, queryId: payload.queryId, rawResultId: payload.rawResultId, providerId: payload.providerId}));
       rawResult = await this.options.fetchRawResult(payload.rawResultId);
     } catch (e) {
       return err({
@@ -76,7 +76,7 @@ export class NormalizationStage implements IPipelineStage<NormalizationJobPayloa
         success: true,
         skipped: true,
         skipReason: `rawResultId "${payload.rawResultId}" not found`,
-      });
+      });
     }
 
     // 2. Build normalization context
@@ -106,7 +106,7 @@ export class NormalizationStage implements IPipelineStage<NormalizationJobPayloa
         success: true,
         skipped: true,
         skipReason: `Normalization failed: ${normalizeResult.error.message}`,
-      });
+      });
     }
 
     const record = normalizeResult.value;
@@ -123,7 +123,7 @@ export class NormalizationStage implements IPipelineStage<NormalizationJobPayloa
           cause: e,
         });
       }
-    }
+    }
 
     return ok({
       success: true,

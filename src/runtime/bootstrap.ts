@@ -1,7 +1,7 @@
-/**
+ï»¿/**
  * @module runtime/bootstrap
  *
- * Composition root — assembles the full runtime container.
+ * Composition root -- assembles the full runtime container.
  *
  * Call bootstrap() once at process startup. The returned container
  * exposes everything needed to handle requests and run pipelines.
@@ -22,7 +22,7 @@ import type { RuntimeFacade } from "./RuntimeFacade.js";
 export interface RuntimeContainer {
   readonly storage: AssembledStorage;
   readonly services: AssembledServices;
-  /** Stable public API — preferred entry point for external callers. */
+  /** Stable public API -- preferred entry point for external callers. */
   readonly runtimeFacade: RuntimeFacade;
 }
 
@@ -32,11 +32,17 @@ export interface RuntimeContainer {
 
 /**
  * Assembles the full runtime from environment configuration.
- * No network connections are opened — the Postgres pool is lazy.
+ * No network connections are opened -- the Postgres pool is lazy.
  */
 export function bootstrap(): RuntimeContainer {
   const storage = createStorage(env);
   const apiKey = env.ai.groq.apiKey;
-  const services = createServices(storage, apiKey !== undefined ? { groqApiKey: apiKey } : {});
+  const services = createServices(storage, {
+    ...(apiKey !== undefined ? { groqApiKey: apiKey } : {}),
+    nominatim: {
+      enabled: env.geocoding.nominatim.enabled,
+      userAgent: env.geocoding.nominatim.userAgent,
+    },
+  });
   return { storage, services, runtimeFacade: services.runtimeFacade };
 }

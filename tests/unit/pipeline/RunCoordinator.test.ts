@@ -1,12 +1,12 @@
-﻿/**
+/**
  * tests/unit/pipeline/RunCoordinator.test.ts
  *
  * Unit tests for RunCoordinator.
- * All dependencies are in-memory stubs — no real DB, no real queue.
+ * All dependencies are in-memory stubs - no real DB, no real queue.
  *
  * Covers:
- *   - execute() transitions run pending → running → complete
- *   - execute() transitions run pending → running → failed on drain error
+ *   - execute() transitions run pending -> running -> complete
+ *   - execute() transitions run pending -> running -> failed on drain error
  *   - onSuccess persists each record via lifecycle.persistRecords
  *   - onSuccess increments recordsNormalized and rawResultsFound
  *   - final stats passed to lifecycle.complete() reflect all processed jobs
@@ -72,8 +72,9 @@ class StubRecordStore implements IRecordStore {
   async insert(r: BusinessRecord): Promise<void> {
     this.inserted.push(r);
   }
-  async insertMany(rs: readonly BusinessRecord[]): Promise<void> {
+  async insertMany(rs: readonly BusinessRecord[]): Promise<number> {
     this.inserted.push(...rs);
+    return rs.length;
   }
   async getByRunId(_id: string): Promise<readonly BusinessRecord[]> {
     return this.inserted;
@@ -174,7 +175,7 @@ function makeCoordinator(
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("RunCoordinator — lifecycle transitions", () => {
+describe("RunCoordinator - lifecycle transitions", () => {
   let runStore: StubRunStore;
   let recordStore: StubRecordStore;
 
@@ -219,14 +220,15 @@ describe("RunCoordinator — lifecycle transitions", () => {
   it("transitions to failed and re-throws when drain throws", async () => {
     runStore.seed(makeRun());
 
-    // Queue that throws on dequeue
+    // Queue that throws on dequeue � depth() must return a valid Result
+    // so PipelineRunner.drain() can log before entering the dequeue loop.
     const badQueue = {
       name: "bad",
       enqueue: vi.fn(),
       dequeue: vi.fn().mockRejectedValue(new Error("queue crashed")),
       ack: vi.fn(),
       nack: vi.fn(),
-      depth: vi.fn(),
+      depth: vi.fn().mockResolvedValue({ ok: true, value: 0 }),
     } as unknown as InMemoryQueue<NormalizationJobPayload>;
 
     const lifecycle = new RunLifecycleService(runStore, recordStore);
@@ -256,7 +258,7 @@ describe("RunCoordinator — lifecycle transitions", () => {
   });
 });
 
-describe("RunCoordinator — record persistence", () => {
+describe("RunCoordinator - record persistence", () => {
   let runStore: StubRunStore;
   let recordStore: StubRecordStore;
 
@@ -321,7 +323,7 @@ describe("RunCoordinator — record persistence", () => {
   });
 });
 
-describe("RunCoordinator — stats tracking", () => {
+describe("RunCoordinator - stats tracking", () => {
   let runStore: StubRunStore;
   let recordStore: StubRecordStore;
 
@@ -345,6 +347,8 @@ describe("RunCoordinator — stats tracking", () => {
 
     expect(stats.recordsNormalized).toBe(2);
     expect(stats.rawResultsFound).toBe(2);
+    expect(stats.recordsUnique).toBe(2);
+    expect(stats.recordsDuplicate).toBe(0);
   });
 
   it("final run in store has correct stats", async () => {
@@ -365,11 +369,7 @@ describe("RunCoordinator — stats tracking", () => {
     const queue = new InMemoryQueue<NormalizationJobPayload>("norm", {
       defaultMaxAttempts: 1,
     });
-    const rawStore = new Map<string, ProviderResult>();
 
-    // Enqueue a job with a raw result that has no name → normalization skips
-    // We need a job that actually FAILS the stage (not skips). Use a payload
-    // whose fetchRawResult throws to trigger DEPENDENCY_UNAVAILABLE → nack.
     const lifecycle = new RunLifecycleService(runStore, recordStore);
     const normalizer = new BusinessNormalizer([new GoogleMapsProviderMapper()]);
     const coordinator = new RunCoordinator(lifecycle, normalizer, queue, {
@@ -382,8 +382,33 @@ describe("RunCoordinator — stats tracking", () => {
     await queue.enqueue(makeJobPayload("raw-fail"));
     const stats = await coordinator.execute(RUN_ID);
 
-    // failed + deadLettered from runner folds into errors
     expect(stats.errors).toBeGreaterThan(0);
+  });
+
+  it("increments recordsNormalized but not recordsUnique when insert is conflict-skipped", async () => {
+    runStore.seed(makeRun());
+    const queue = new InMemoryQueue<NormalizationJobPayload>("norm");
+    const rawStore = new Map<string, ProviderResult>([
+      ["raw-1", makeProviderResult("Ace Plumbers")],
+    ]);
+    await queue.enqueue(makeJobPayload("raw-1"));
+    const skippingStore: IRecordStore = {
+      async insert(_r: BusinessRecord): Promise<void> {},
+      async insertMany(_rs: readonly BusinessRecord[]): Promise<number> { return 0; },
+      async getByRunId(_id: string): Promise<readonly BusinessRecord[]> { return []; },
+      async countByRunId(_id: string): Promise<number> { return 0; },
+    };
+    const lifecycle = new RunLifecycleService(runStore, skippingStore);
+    const normalizer = new BusinessNormalizer([new GoogleMapsProviderMapper()]);
+    const coordinator = new RunCoordinator(lifecycle, normalizer, queue, {
+      fetchRawResult: async (id) => rawStore.get(id) ?? null,
+      pollIntervalMs: 0,
+    });
+    const stats = await coordinator.execute(RUN_ID);
+    expect(stats.recordsNormalized).toBe(1);
+    expect(stats.rawResultsFound).toBe(1);
+    expect(stats.recordsUnique).toBe(0);
+    expect(stats.recordsDuplicate).toBe(1);
   });
 
   it("returns zero stats when queue is empty", async () => {

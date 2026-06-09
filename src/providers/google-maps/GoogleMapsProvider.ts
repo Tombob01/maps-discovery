@@ -340,14 +340,20 @@ export class GoogleMapsProvider implements IBrowserProvider {
       // -------------------------------------------------------------------
 
       let totalYielded = 0;
+      let urlsVisited = 0;
+      let successfulExtractions = 0;
+      let failedNavigations = 0;
+      let failedExtractions = 0;
 
       for (const entry of collectedUrls) {
         if (totalYielded >= maxResults) break;
 
+        urlsVisited++;
         try {
           await page.goto(entry.url, { waitUntil: "domcontentloaded", timeout: 20000 });
           await page.waitForSelector('div[role="main"]', { timeout: 10000 });
         } catch (err) {
+          failedNavigations++;
           log.error(`phase2: navigation failed for ${entry.url} -- skipping`, err);
           continue;
         }
@@ -361,9 +367,12 @@ export class GoogleMapsProvider implements IBrowserProvider {
             entry.position,
           );
         } catch (err) {
+          failedExtractions++;
           log.error(`phase2: extraction failed for ${entry.url} -- skipping`, err);
           continue;
         }
+
+        successfulExtractions++;
 
         const resultId =
           payload.placeId ??
@@ -394,6 +403,8 @@ export class GoogleMapsProvider implements IBrowserProvider {
         }
       }
 
+      const successRate = urlsVisited > 0 ? Math.round((successfulExtractions / urlsVisited) * 100) : 0;
+      log.debug(`[phase2-stats] visited=${urlsVisited} extracted=${successfulExtractions} failed_navigation=${failedNavigations} failed_extraction=${failedExtractions} success_rate=${successRate}%`);
       log.debug(`phase2 complete: yielded ${totalYielded} results`);
 
     } finally {

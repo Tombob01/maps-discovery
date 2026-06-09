@@ -1,7 +1,7 @@
-/**
+﻿/**
  * @module runtime/RuntimeFacade
  *
- * Stable public API for the runtime. Delegates only — no logic.
+ * Stable public API for the runtime. Delegates only -- no logic.
  */
 
 import type { IProvider, DiscoveryOptions } from "../core/interfaces/IProvider.js";
@@ -13,7 +13,7 @@ import type { RuntimeExecutor, ExecutionSummary } from "./RuntimeExecutor.js";
 import type { KeywordExpansionService, ExpansionResponse } from "../ai/KeywordExpansionService.js";
 import type { CreateRunRequest, RecordListRequest } from "../api/types.js";
 import type { QueryEngine } from "../query-engine/QueryEngine.js";
-import type { PassthroughGeoResolver } from "../query-engine/GeoResolver.js";
+import type { IGeoResolver } from "../core/interfaces/IQueryEngine.js";
 import type { ResolvedQueryFactory } from "../query-engine/ResolvedQueryFactory.js";
 import type { GeoTarget } from "../core/types/geo.js";
 
@@ -80,13 +80,35 @@ export interface ExecuteFromSeedOptions {
   readonly discoveryOptions?: DiscoveryOptions;
 }
 
+// ---------------------------------------------------------------------------
+// Pure helper -- exported for testing
+// ---------------------------------------------------------------------------
+
+/**
+ * Converts a raw location string into a GeoTarget.
+ * Simple passthrough -- no geocoding logic here.
+ * The resolver (NominatimGeoResolver or PassthroughGeoResolver) handles
+ * all location interpretation.
+ */
+export function buildGeoTarget(location: string): GeoTarget {
+  const trimmed = location.trim();
+  return {
+    displayName: trimmed,
+    country: trimmed,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// RuntimeFacade
+// ---------------------------------------------------------------------------
+
 export class RuntimeFacade {
   constructor(
     private readonly runService: RunService,
     private readonly runtimeExecutor: RuntimeExecutor,
     private readonly expansionService: KeywordExpansionService,
     private readonly queryEngine: QueryEngine,
-    private readonly geoResolver: PassthroughGeoResolver,
+    private readonly geoResolver: IGeoResolver,
     private readonly resolvedQueryFactory: ResolvedQueryFactory,
   ) {}
 
@@ -113,24 +135,20 @@ export class RuntimeFacade {
    *
    * Flow:
    *   1. Build QuerySeed from keyword + location string
-   *   2. QueryEngine.generate() → GeneratedQuery[] (geo resolved internally)
-   *   3. Resolve geo via PassthroughGeoResolver for ResolvedQuery assembly
+   *   2. QueryEngine.generate() -> GeneratedQuery[] (geo resolved internally)
+   *   3. Resolve geo via geoResolver for ResolvedQuery assembly
    *   4. Assemble ResolvedQuery via ResolvedQueryFactory
    *   5. Delegate to RuntimeExecutor.execute()
    *
-   * RuntimeExecutor is completely unchanged — it still receives a ResolvedQuery.
+   * The geoResolver instance is shared with QueryEngine so both resolution
+   * call sites behave identically.
    */
   async executeFromSeed(opts: ExecuteFromSeedOptions): Promise<ExecutionSummary> {
-    const geoTarget: GeoTarget = {
-      displayName: opts.location,
-      country: opts.location,
-    };
+    const geoTarget = buildGeoTarget(opts.location);
 
     const seed: QuerySeed = {
       niche: opts.keyword,
       location: geoTarget,
-      // No expansion strategies for now — just the root query.
-      // Milestone C will wire multi-variant dispatch.
       expansionStrategyIds: [],
     };
 
@@ -146,17 +164,13 @@ export class RuntimeFacade {
       );
     }
 
-    // queries[0] is always the root seed query; generate() guarantees at
-    // least one entry on Ok, but we guard explicitly to satisfy TypeScript.
     const rootQuery = genResult.value[0];
     if (rootQuery === undefined) {
       throw new Error("Query generation returned an empty result set");
     }
 
-    // Resolve geo for ResolvedQuery assembly. PassthroughGeoResolver uses
-    // country centroid tables and never makes external calls. This mirrors
-    // what QueryEngine already did internally — if the engine succeeded,
-    // this call will also succeed with the same result.
+    // Resolve geo for ResolvedQuery assembly. Uses the same geoResolver
+    // instance that QueryEngine used internally -- consistent results.
     const geoResult = await this.geoResolver.resolve(geoTarget);
     const resolvedGeo = geoResult.ok
       ? geoResult.value
@@ -192,6 +206,19 @@ export class RuntimeFacade {
       total: result.data.total,
       page: result.data.page,
       hasMore: result.data.hasMore,
+    };
+  }
+
+  async exportRun(
+    runId: string,
+    format: "csv" | "jsonl",
+  ): Promise<{ content: string; recordsExported: number; filename: string }> {
+    const result = await this.runService.exportRunToString(runId, format);
+    const ext = format === "csv" ? "csv" : "jsonl";
+    return {
+      content: result.content,
+      recordsExported: result.recordsExported,
+      filename: `run-${runId}.${ext}`,
     };
   }
 }

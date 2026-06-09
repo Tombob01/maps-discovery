@@ -1,8 +1,8 @@
-/**
+﻿/**
  * @module api/RunService
  *
  * Business logic for creating, retrieving, and summarising runs.
- * Stateless — all state lives in the injected store.
+ * Stateless â€” all state lives in the injected store.
  */
 
 import type {
@@ -21,7 +21,7 @@ import type { IExporter } from "../exporters/IExporter.js";
 import { isOk } from "../core/types/common.js";
 
 // ---------------------------------------------------------------------------
-// Store interfaces — swappable implementations (in-memory / DB)
+// Store interfaces â€” swappable implementations (in-memory / DB)
 // ---------------------------------------------------------------------------
 
 export interface IRunStore {
@@ -200,8 +200,47 @@ export class RunService {
       },
     };
   }
-}
 
+  // -------------------------------------------------------------------------
+  // Export to in-memory string (used by RuntimeFacade for HTTP streaming)
+  // -------------------------------------------------------------------------
+
+  async getRecordsForExport(runId: string): Promise<BusinessRecord[]> {
+    return this.recordStore.findByRunId(runId);
+  }
+
+  async exportRunToString(
+    runId: string,
+    format: "csv" | "jsonl",
+  ): Promise<{ content: string; recordsExported: number }> {
+    const exporter = this.exporters.get(format);
+    if (!exporter) {
+      throw new Error(`Unsupported export format: "${format}"`);
+    }
+    const records = await this.recordStore.findByRunId(runId);
+    if (records.length === 0) {
+      throw new Error(`NO_RECORDS: No records found for run "${runId}"`);
+    }
+    let captured = "";
+    const captureAdapter: import("../exporters/JsonLinesExporter.js").WriteAdapter =
+      async (_dest: string, content: string) => {
+        captured = content;
+      };
+    let freshExporter: import("../exporters/IExporter.js").IExporter;
+    if (format === "csv") {
+      const { CsvExporter } = await import("../exporters/CsvExporter.js");
+      freshExporter = new CsvExporter(captureAdapter);
+    } else {
+      const { JsonLinesExporter } = await import("../exporters/JsonLinesExporter.js");
+      freshExporter = new JsonLinesExporter(captureAdapter);
+    }
+    const result = await freshExporter.export(records, "__capture__");
+    if (!result.ok) {
+      throw new Error(`Export failed: ${result.error.message}`);
+    }
+    return { content: captured, recordsExported: result.value.recordsWritten };
+  }
+}
 // ---------------------------------------------------------------------------
 // Mappers
 // ---------------------------------------------------------------------------

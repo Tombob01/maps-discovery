@@ -79,12 +79,17 @@ export function DiscoveryPage({ facade = mockFacade }: Props): React.ReactElemen
                   runStatus={state.runStatus}
                   progress={state.progress}
                   stats={state.stats}
+                  currentSeed={state.currentSeed}
                 />
 
                 <EventLog events={state.events} />
 
                 {state.step === 'results' && (
-                  <ResultsTable records={state.records} />
+                  <ResultsTable
+                    records={state.records}
+                    onExport={actions.exportRecords}
+                    exportPhase={state.exportPhase}
+                  />
                 )}
               </>
             )}
@@ -95,3 +100,4 @@ export function DiscoveryPage({ facade = mockFacade }: Props): React.ReactElemen
     </div>
   );
 }
+

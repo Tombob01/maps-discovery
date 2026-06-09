@@ -54,6 +54,15 @@ export function createServer(
 ): Hono {
   const app = new Hono();
 
+  // Concurrency guard ï¿½ one discovery run at a time
+  let isExecuting = false;
+  // Runtime-only visibility state.
+  //
+  // Safe because this server currently allows only one active execution
+  // at a time via `isExecuting`. If concurrent run execution is introduced
+  // in the future, revisit this tracking mechanism and the execution model.
+  const currentSeedByRun = new Map<string, string>();
+
   // Allow the Vite dev server (port 5173) to call this API (port 3001)
   app.use(
     "/api/*",
@@ -66,8 +75,8 @@ export function createServer(
 
   // --------------------------------------------------------------------------
   // POST /api/expand
-  // --------------------------------------------------------------------------
   app.post("/api/expand", async (c) => {
+  // --------------------------------------------------------------------------
     let body: ExpandBody;
     try {
       body = await c.req.json<ExpandBody>();
@@ -120,12 +129,18 @@ export function createServer(
   // --------------------------------------------------------------------------
   // POST /api/runs/:id/execute
   //
-  // Accepts a provider ID string + seed { keyword, location }.
-  // The facade resolves the seed into a ResolvedQuery via QueryEngine.
-  // The mock provider is used until Milestone C wires GoogleMapsProvider.
+  // Fire-and-forget: returns 202 immediately, runs pipeline in background.
+  // Client polls GET /api/runs/:id for live status and stats.
   // --------------------------------------------------------------------------
   app.post("/api/runs/:id/execute", async (c) => {
     const runId = c.req.param("id");
+
+    if (isExecuting) {
+      return c.json(
+        { ok: false, error: { code: "CONFLICT", message: "A discovery run is already in progress." } },
+        409,
+      );
+    }
 
     let body: ExecuteRunBody;
     try {
@@ -144,52 +159,53 @@ export function createServer(
         return c.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "each seed must have a location" } }, 400);
       }
     }
+
     const provider: IProvider =
       body.provider === "google-maps" && googleMapsProvider !== undefined
         ? googleMapsProvider
         : buildMockProvider(body.provider ?? "mock");
-    let totalResultsSaved = 0;
-    let totalJobsEnqueued = 0;
-    let totalRecordsNormalized = 0;
-    let totalErrors = 0;
-    try {
-      for (const seed of body.seeds) {
-        const summary = await facade.executeFromSeed({
-          provider,
-          runId: runId as import("../core/types/common.js").RunID,
-          keyword: seed.keyword.trim(),
-          location: seed.location.trim(),
-        });
-        totalResultsSaved    += summary.discovery.resultsSaved;
-        totalJobsEnqueued    += summary.discovery.jobsEnqueued;
-        totalRecordsNormalized += summary.normalization.recordsNormalized;
-        totalErrors          += summary.normalization.errors;
+
+    // Capture seeds before async boundary to avoid closure issues.
+    const seedsCopy = body.seeds.map(s => ({
+      keyword: s.keyword.trim(),
+      location: s.location.trim(),
+    }));
+
+    // Set guard before returning so concurrent requests are rejected immediately.
+    isExecuting = true;
+    void (async () => {
+
+    // Background pipeline — client polls GET /api/runs/:id for updates.
+      for (const seed of seedsCopy) {
+        currentSeedByRun.set(runId, seed.keyword);
+        try {
+          await facade.executeFromSeed({
+            provider,
+            runId: runId as import("../core/types/common.js").RunID,
+            keyword: seed.keyword,
+            location: seed.location,
+          });
+        } catch (err) {
+          console.error(
+            "[execute:seed-failed] keyword=" + seed.keyword +
+            " error=" + (err instanceof Error ? err.message : String(err)),
+          );
+          // continue to next seed — failure of one keyword must not stop the batch
+        }
       }
-      return c.json({
-        ok: true,
-        data: {
-          discovery: {
-            resultsSaved: totalResultsSaved,
-            jobsEnqueued: totalJobsEnqueued,
-          },
-          normalization: {
-            queriesGenerated: body.seeds.length,
-            queriesDispatched: body.seeds.length,
-            rawResultsFound: totalResultsSaved,
-            recordsNormalized: totalRecordsNormalized,
-            recordsUnique: totalRecordsNormalized,
-            recordsDuplicate: 0,
-            recordsExported: 0,
-            errors: totalErrors,
-          },
-        },
+    })()
+      .catch((err) => {
+        console.error(
+          "[execute:background] run failed:",
+          err instanceof Error ? err.message : String(err),
+        );
+      })
+      .finally(() => {
+        isExecuting = false;
+        currentSeedByRun.delete(runId);
       });
-    } catch (err) {
-      return c.json(
-        { ok: false, error: { code: "EXECUTE_FAILED", message: err instanceof Error ? err.message : String(err) } },
-        500,
-      );
-    }
+
+    return c.json({ ok: true, data: { runId, status: "running" } }, 202);
   });
 
   // --------------------------------------------------------------------------
@@ -202,7 +218,8 @@ export function createServer(
       if (run === null) {
         return c.json({ ok: false, error: { code: "NOT_FOUND", message: `Run "${runId}" not found` } }, 404);
       }
-      return c.json({ ok: true, data: run });
+      const currentSeed = currentSeedByRun.get(runId) ?? null;
+      return c.json({ ok: true, data: { ...run, currentSeed } });
     } catch (err) {
       return c.json(
         { ok: false, error: { code: "GET_FAILED", message: err instanceof Error ? err.message : String(err) } },
@@ -230,6 +247,47 @@ export function createServer(
     }
   });
 
+
+  // --------------------------------------------------------------------------
+  // GET /api/runs/:id/export?format=csv|jsonl
+  // --------------------------------------------------------------------------
+  app.get("/api/runs/:id/export", async (c) => {
+    const runId = c.req.param("id");
+    const raw = c.req.query("format") ?? "csv";
+    if (raw !== "csv" && raw !== "jsonl") {
+      return c.json(
+        { ok: false, error: { code: "VALIDATION_ERROR", message: `format must be "csv" or "jsonl", got "${raw}"` } },
+        400,
+      );
+    }
+    const format = raw as "csv" | "jsonl";
+
+    try {
+      const { content, filename } = await facade.exportRun(runId, format);
+      const contentType = format === "csv" ? "text/csv; charset=utf-8" : "application/x-ndjson; charset=utf-8";
+      return new Response(content, {
+        status: 200,
+        headers: {
+          "Content-Type": contentType,
+          "Content-Disposition": `attachment; filename="${filename}"`,
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith("NO_RECORDS:")) {
+        return c.json({ ok: false, error: { code: "NO_RECORDS", message: msg.replace("NO_RECORDS: ", "") } }, 404);
+      }
+      if (msg.startsWith("Unsupported export format")) {
+        return c.json({ ok: false, error: { code: "UNSUPPORTED_FORMAT", message: msg } }, 400);
+      }
+      return c.json(
+        { ok: false, error: { code: "EXPORT_FAILED", message: msg } },
+        500,
+      );
+    }
+  });
   return app;
 }
 
@@ -282,5 +340,8 @@ function buildMockProvider(id: string): import("../core/interfaces/IProvider.js"
     },
   };
 }
+
+
+
 
 

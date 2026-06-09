@@ -1,9 +1,9 @@
-/**
+﻿/**
  * @module runtime/createServices
  */
 
 import { RunLifecycleService } from "../storage/RunLifecycleService.js";
-import { InMemoryRawResultStore } from "../storage/InMemoryRawResultStore.js";
+import type { IRawResultStore } from "../storage/IRawResultStore.js";
 import { RunCoordinator } from "../pipeline/RunCoordinator.js";
 import { InMemoryQueue } from "../queue/InMemoryQueue.js";
 import { RunService } from "../api/RunService.js";
@@ -22,6 +22,7 @@ import {
   buildQueryEngineConfig,
   PassthroughGeoResolver,
   ResolvedQueryFactory,
+  NominatimGeoResolver,
 } from "../query-engine/index.js";
 import { resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,10 +33,11 @@ import type { IQueue } from "../queue/IQueue.js";
 import type { AssembledStorage } from "./createStorage.js";
 import type { IKeywordExpansionProvider } from "../ai/IKeywordExpansionProvider.js";
 import type { QueryEngine } from "../query-engine/QueryEngine.js";
+import type { IGeoResolver } from "../core/interfaces/IQueryEngine.js";
 
 export interface AssembledServices {
   readonly lifecycle: RunLifecycleService;
-  readonly rawResultStore: InMemoryRawResultStore;
+  readonly rawResultStore: IRawResultStore;
   readonly normalizationQueue: IQueue<NormalizationJobPayload>;
   readonly coordinator: RunCoordinator;
   readonly runService: RunService;
@@ -43,7 +45,7 @@ export interface AssembledServices {
   readonly runtimeExecutor: RuntimeExecutor;
   readonly expansionService: KeywordExpansionService;
   readonly queryEngine: QueryEngine;
-  readonly geoResolver: PassthroughGeoResolver;
+  readonly geoResolver: IGeoResolver;
   readonly resolvedQueryFactory: ResolvedQueryFactory;
   readonly runtimeFacade: RuntimeFacade;
 }
@@ -56,13 +58,17 @@ export function createServices(
     expansionProvider?: IKeywordExpansionProvider;
     groqApiKey?: string;
     staticCoordinates?: Readonly<Record<string, { lat: number; lng: number }>>;
+    nominatim?: { enabled: boolean; userAgent: string };
   } = {},
 ): AssembledServices {
   const lifecycle = new RunLifecycleService(storage.runStore, storage.recordStore);
-  const rawResultStore = new InMemoryRawResultStore();
+  const rawResultStore: IRawResultStore = storage.rawResultStore;
   const normalizationQueue: IQueue<NormalizationJobPayload> =
     overrides.normalizationQueue ?? new InMemoryQueue<NormalizationJobPayload>("normalization");
+  (normalizationQueue as any)._instanceId = Math.random().toString(36).slice(2, 8);
+  console.log('[services:init] queue-instance=' + (normalizationQueue as any)._instanceId);
   const normalizer = new BusinessNormalizer([new GoogleMapsProviderMapper()]);
+  console.log('[services:coordinator] queue-ref=' + (normalizationQueue as any)._instanceId);
   const coordinator = new RunCoordinator(lifecycle, normalizer, normalizationQueue, {
     fetchRawResult: (id) => rawResultStore.fetch(id),
   });
@@ -74,8 +80,10 @@ export function createServices(
       ["csv", new CsvExporter(noopWrite)],
     ]);
   const runService = new RunService(storage.runServiceStore, storage.recordServiceStore, exporters);
-  const createDiscoveryRunner = (provider: IProvider): DiscoveryRunner =>
-    new DiscoveryRunner(provider, rawResultStore, normalizationQueue);
+  const createDiscoveryRunner = (provider: IProvider): DiscoveryRunner => {
+    console.log('[services:createDiscoveryRunner] queue-name=' + normalizationQueue.name + ' queue-ref=' + (normalizationQueue as any)._instanceId);
+    return new DiscoveryRunner(provider, rawResultStore, normalizationQueue);
+  };
   const runtimeExecutor = new RuntimeExecutor(createDiscoveryRunner, coordinator);
 
   const expansionProvider: IKeywordExpansionProvider =
@@ -86,10 +94,7 @@ export function createServices(
 
   const expansionService = new KeywordExpansionService(expansionProvider);
 
-  // ── Query engine ──────────────────────────────────────────────────────────
-  // Dictionary directories sit at <project-root>/src/query-engine/dictionaries.
-  // We derive the path from the URL of this module so it works regardless of
-  // where the process is launched from.
+  // -- Query engine ----------------------------------------------------------
   const __dirname = fileURLToPath(new URL(".", import.meta.url));
   const dictionariesBase = resolvePath(
     __dirname,
@@ -99,16 +104,25 @@ export function createServices(
     nicheDictionariesDir: dictionariesBase,
     geoDictionariesDir: dictionariesBase,
   });
+
+  // Build the geo resolver once and share it with both QueryEngine and
+  // RuntimeFacade so both resolution call sites behave identically.
+  const nominatimOpts = overrides.nominatim;
+  const geoResolver: IGeoResolver =
+    nominatimOpts?.enabled === true
+      ? new NominatimGeoResolver(queryEngineConfig.geoResolver, {
+          userAgent: nominatimOpts.userAgent,
+        })
+      : new PassthroughGeoResolver(queryEngineConfig.geoResolver);
+
   const assembled = createQueryEngine({
     config: queryEngineConfig,
+    geoResolver,
     ...(overrides.staticCoordinates !== undefined
       ? { staticCoordinates: overrides.staticCoordinates }
       : {}),
   });
   const queryEngine = assembled.engine;
-  const geoResolver = new PassthroughGeoResolver(
-    queryEngineConfig.geoResolver,
-  );
   const resolvedQueryFactory = new ResolvedQueryFactory();
 
   const runtimeFacade = new RuntimeFacade(
@@ -127,3 +141,6 @@ export function createServices(
     runtimeFacade,
   };
 }
+
+
+

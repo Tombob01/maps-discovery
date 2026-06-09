@@ -129,7 +129,7 @@ class InMemoryRunStore implements IRunStore {
 class InMemoryRecordStore implements IRecordStore {
   readonly inserted: BusinessRecord[] = [];
   async insert(record: BusinessRecord): Promise<void> { this.inserted.push(record); }
-  async insertMany(records: readonly BusinessRecord[]): Promise<void> { this.inserted.push(...records); }
+  async insertMany(records: readonly BusinessRecord[]): Promise<number> { this.inserted.push(...records); return records.length; }
   async getByRunId(runId: string): Promise<readonly BusinessRecord[]> {
     return this.inserted.filter((r) => r.runId === runId);
   }
@@ -162,6 +162,7 @@ function makeStorage(
 ): AssembledStorage {
   return {
     client: {} as AssembledStorage["client"],
+    rawResultStore: new InMemoryRawResultStore(),
     runStore,
     recordStore,
     runServiceStore: new InMemoryRunServiceStore(runStore),
@@ -250,7 +251,7 @@ describe("DiscoveryRunner", () => {
     expect(dequeued.value.payload.rawResultId).toBe("result-1");
   });
 
-  it("does not hold a lifecycle reference — constructor takes only 3 args", () => {
+  it("does not hold a lifecycle reference ï¿½ constructor takes only 3 args", () => {
     const provider = makeMockProvider([]);
     // If a 4th arg were required this would be a type error
     const runner = new DiscoveryRunner(provider, rawResultStore, normalizationQueue);

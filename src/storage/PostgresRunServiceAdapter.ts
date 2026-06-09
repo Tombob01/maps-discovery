@@ -109,22 +109,24 @@ export class PostgresRecordServiceAdapter implements RunServiceRecordStore {
     req: RecordListRequest,
   ): Promise<{ items: BusinessRecord[]; total: number }> {
     const page = Math.max(1, req.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, req.pageSize ?? 20));
+    const pageSize = Math.min(500, Math.max(1, req.pageSize ?? 20));
 
     // If a runId filter is given, fetch only that run's records.
     // Otherwise fall back to an empty result — a full-table scan without
     // a run filter is not exposed by storage.IRecordStore by design.
-    let allRecords: readonly BusinessRecord[];
+    let items: readonly BusinessRecord[];
+    let total: number;
     if (typeof req.runId === "string" && req.runId.length > 0) {
-      allRecords = await this.store.getByRunId(req.runId);
+      const offset = (page - 1) * pageSize;
+      [items, total] = await Promise.all([
+        this.store.getByRunIdPaginated(req.runId, pageSize, offset),
+        this.store.countByRunId(req.runId),
+      ]);
     } else {
-      allRecords = [];
+      items = [];
+      total = 0;
     }
 
-    const total = allRecords.length;
-    const start = (page - 1) * pageSize;
-    const items = allRecords.slice(start, start + pageSize);
-
-    return { items, total };
+    return { items: items as BusinessRecord[], total };
   }
 }

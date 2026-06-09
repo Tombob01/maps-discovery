@@ -1,6 +1,7 @@
 // ─── Domain value types ──────────────────────────────────────────────────────
 
 export type RunStatus = 'pending' | 'running' | 'complete' | 'failed';
+export type ExportFormat = 'csv' | 'jsonl';
 export type FlowStep = 'expand' | 'select' | 'run' | 'results';
 export type EventLevel = 'info' | 'ok' | 'warn' | 'err';
 
@@ -66,6 +67,7 @@ export interface Run {
   id: string;
   status: RunStatus;
   stats: RunStats;
+  currentSeed?: string | null;
 }
 
 export interface BusinessRecord {
@@ -86,6 +88,7 @@ export interface IRuntimeFacade {
   executeRun(params: ExecuteRunParams): Promise<ExecutionSummary>;
   getRun(runId: string): Promise<Run>;
   listRecords(runId: string): Promise<BusinessRecord[]>;
+  exportRun(runId: string, format: ExportFormat): Promise<void>;
 }
 
 // ─── UI state types ──────────────────────────────────────────────────────────
@@ -112,6 +115,9 @@ export interface DiscoveryFlowState {
   records: BusinessRecord[];
   stats: RunStats | null;
   error: string | null;
+  exportPhase: Phase;
+  exportError: string | null;
+  currentSeed: string | null;
 }
 
 // ─── Mock facade (for development / Storybook) ───────────────────────────────
@@ -173,5 +179,11 @@ export const mockFacade: IRuntimeFacade = {
   listRecords(_runId) {
     return delay(500, [...MOCK_RECORDS]);
   },
+
+  exportRun(_runId: string, _format: ExportFormat) {
+    return delay(800, undefined as void);
+  },
 };
+
+
 

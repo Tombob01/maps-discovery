@@ -1,10 +1,10 @@
-/**
+﻿/**
  * @module query-engine/QueryEngineFactory
  *
  * Wires all query-engine components into a ready-to-use QueryEngine.
  *
  * This is the single assembly point for the package. Callers outside
- * query-engine should only need to call createQueryEngine() — they never
+ * query-engine should only need to call createQueryEngine() -- they never
  * instantiate individual components directly.
  *
  * All components are assembled synchronously. Dictionary loading
@@ -28,7 +28,7 @@ import {
 } from "./strategies/index.js";
 
 import type { QueryEngineConfig } from "./config/QueryEngineConfig.js";
-import type { IExpansionStrategy } from "../core/interfaces/IQueryEngine.js";
+import type { IExpansionStrategy, IGeoResolver } from "../core/interfaces/IQueryEngine.js";
 import type { GeoCoordinates } from "../core/types/geo.js";
 
 // ---------------------------------------------------------------------------
@@ -53,8 +53,17 @@ export interface QueryEngineAssemblyOptions {
    * Static coordinate overrides for the geo resolver.
    * Keyed by displayName (case-insensitive). Useful for tests and
    * for seeding known cities without external API access.
+   * Ignored when geoResolver is provided.
    */
   readonly staticCoordinates?: Readonly<Record<string, GeoCoordinates>>;
+
+  /**
+   * Optional pre-constructed geo resolver.
+   * When provided, staticCoordinates is ignored and this resolver is used
+   * directly. Use this to inject NominatimGeoResolver or any IGeoResolver
+   * implementation without changing factory internals.
+   */
+  readonly geoResolver?: IGeoResolver;
 }
 
 // ---------------------------------------------------------------------------
@@ -79,7 +88,7 @@ export interface AssembledQueryEngine {
 /**
  * Assembles a fully wired QueryEngine from the provided options.
  *
- * Throws on dictionary load failure (malformed YAML) — treat as
+ * Throws on dictionary load failure (malformed YAML) -- treat as
  * an unrecoverable startup error.
  */
 export function createQueryEngine(
@@ -87,26 +96,29 @@ export function createQueryEngine(
 ): AssembledQueryEngine {
   const { config } = options;
 
-  // ── Load dictionaries ──────────────────────────────────────────────────
+  // -- Load dictionaries -----------------------------------------------------
   const { niches, geo } = loadAllDictionaries(
     config.dictionaries.nicheDictionariesDir,
     config.dictionaries.geoDictionariesDir,
   );
 
-  // ── Canonicalizer ──────────────────────────────────────────────────────
+  // -- Canonicalizer ---------------------------------------------------------
   const canonicalizer = new QueryCanonicalizer(config.canonicalizer);
 
-  // ── Geo resolver ───────────────────────────────────────────────────────
-  const geoResolver =
-    options.staticCoordinates !== undefined &&
-    Object.keys(options.staticCoordinates).length > 0
-      ? new StaticCoordinateGeoResolver(
-          options.staticCoordinates,
-          config.geoResolver,
-        )
-      : new PassthroughGeoResolver(config.geoResolver);
+  // -- Geo resolver ----------------------------------------------------------
+  // Priority: injected geoResolver > staticCoordinates > PassthroughGeoResolver
+  const geoResolver: IGeoResolver =
+    options.geoResolver !== undefined
+      ? options.geoResolver
+      : options.staticCoordinates !== undefined &&
+          Object.keys(options.staticCoordinates).length > 0
+        ? new StaticCoordinateGeoResolver(
+            options.staticCoordinates,
+            config.geoResolver,
+          )
+        : new PassthroughGeoResolver(config.geoResolver);
 
-  // ── Built-in strategies ────────────────────────────────────────────────
+  // -- Built-in strategies ---------------------------------------------------
   const builtInStrategies: IExpansionStrategy[] = [
     new SynonymExpansionStrategy(niches),
     new ModifierExpansionStrategy(niches),
@@ -114,20 +126,20 @@ export function createQueryEngine(
     new GeoExpansionStrategy(geo),
   ];
 
-  // ── Additional (plugin) strategies ────────────────────────────────────
+  // -- Additional (plugin) strategies ----------------------------------------
   const allStrategies: IExpansionStrategy[] = [
     ...builtInStrategies,
     ...(options.additionalStrategies ?? []),
   ];
 
-  // ── Expander ───────────────────────────────────────────────────────────
+  // -- Expander --------------------------------------------------------------
   const expander = new QueryExpander(
     allStrategies,
     canonicalizer,
     config.expansion,
   );
 
-  // ── Engine ─────────────────────────────────────────────────────────────
+  // -- Engine ----------------------------------------------------------------
   const engine = new QueryEngine(
     canonicalizer,
     expander,
