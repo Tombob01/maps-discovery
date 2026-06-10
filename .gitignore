@@ -34,3 +34,25 @@ ui-export.zip
 patch_*.cjs
 check_run.cjs
 discover_log*.txt
+
+# --- Generated artifacts and diagnostic output (added during cleanup) --------
+# Log files
+*.log
+discover_log*.txt
+run_log*.txt
+server-log*.txt
+phase1-run.log
+
+# Diagnostic/output dumps
+context_dump.txt
+dedup_dump.txt
+schema_dump.txt
+qe-results.txt
+test-results*.txt
+test-verbose.txt
+verify_*.txt
+*_dump.txt
+test_export.csv
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
