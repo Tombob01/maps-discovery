@@ -51,6 +51,20 @@ const BLOCKED_URL_PATTERNS = [
   "doubleclick.net",
   "google-analytics.com",
   "googletagmanager.com",
+  // Map tiles -- visual only, coordinates extracted from URL not rendered map
+  "maps.googleapis.com/maps/vt",
+  "khm.googleapis.com",
+  "mts.googleapis.com",
+  // Photo CDN -- no photo data is extracted by the pipeline
+  "lh3.googleusercontent.com",
+  "lh4.googleusercontent.com",
+  "lh5.googleusercontent.com",
+  // Google internal telemetry and beacons -- one-way, no response content used
+  "google.com/log",
+  "google.com/gen_204",
+  // Google Fonts -- belt-and-suspenders alongside font resource type block
+  "fonts.googleapis.com",
+  "fonts.gstatic.com",
 ];
 
 // ---------------------------------------------------------------------------
@@ -193,6 +207,13 @@ export class GoogleMapsBrowser {
           "--disable-extensions",
           "--disable-gpu",
           "--disable-dev-shm-usage",
+          "--disable-background-networking",
+          "--disable-sync",
+          "--disable-translate",
+          "--no-first-run",
+          "--disable-client-side-phishing-detection",
+          "--disable-default-apps",
+          "--metrics-recording-only",
         ],
       });
 

@@ -18,7 +18,7 @@ const EXECUTE_PARAMS = {
   provider: "google-maps",
   runId: "run-test-123",
   query: { niche: "plumbers", location: "Lagos Nigeria" },
-  keywords: ["plumbers Lagos"],
+  keywords: [{ keyword: "plumbers Lagos", strategy: "commercial" as const }],
 };
 
 describe("httpClient.executeRun() — fire-and-forget", () => {
@@ -64,7 +64,7 @@ describe("httpClient.executeRun() — fire-and-forget", () => {
 
     const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     const body = JSON.parse((call[1] as RequestInit).body as string);
-    expect(body.seeds).toEqual([{ keyword: "plumbers Lagos", location: "Lagos Nigeria" }]);
+    expect(body.seeds).toEqual([{ keyword: "plumbers Lagos", location: "Lagos Nigeria", strategy: "commercial" }]);
   });
 
   it("falls back to query.niche when keywords array is empty", async () => {

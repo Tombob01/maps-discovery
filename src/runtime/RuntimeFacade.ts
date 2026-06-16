@@ -19,6 +19,7 @@ import type { GeoTarget } from "../core/types/geo.js";
 
 export type { ExpansionResponse };
 export type { ExpandedKeyword } from "../ai/IKeywordExpansionProvider.js";
+import type { ExpansionStrategy } from "../ai/IKeywordExpansionProvider.js";
 
 export interface CreateRunResult {
   readonly runId: string;
@@ -64,6 +65,7 @@ export interface ExpandKeywordOptions {
   readonly keyword: string;
   readonly location?: string;
   readonly limit?: number;
+  readonly strategy?: ExpansionStrategy;
 }
 
 /**
@@ -116,6 +118,7 @@ export class RuntimeFacade {
     const expansionOpts = {
       ...(opts.location !== undefined ? { location: opts.location } : {}),
       ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+      ...(opts.strategy !== undefined ? { strategy: opts.strategy } : {}),
     };
     return this.expansionService.expand(opts.keyword, expansionOpts);
   }

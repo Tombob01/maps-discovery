@@ -1,21 +1,29 @@
-// ─── Domain value types ──────────────────────────────────────────────────────
+﻿// â”€â”€â”€ Domain value types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type RunStatus = 'pending' | 'running' | 'complete' | 'failed';
 export type ExportFormat = 'csv' | 'jsonl';
 export type FlowStep = 'expand' | 'select' | 'run' | 'results';
 export type EventLevel = 'info' | 'ok' | 'warn' | 'err';
 
-// ─── RuntimeFacade shapes ────────────────────────────────────────────────────
+// â”€â”€â”€ RuntimeFacade shapes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export type ExpansionStrategy = 'commercial' | 'discovery' | 'geographic';
+
+export interface ExpandedSuggestion {
+  keyword: string;
+  strategy: ExpansionStrategy;
+}
 
 export interface ExpansionResponse {
   original: string;
-  suggestions: string[];
+  suggestions: ExpandedSuggestion[];
 }
 
 export interface ExpandKeywordParams {
   keyword: string;
   location?: string;
   limit?: number;
+  strategy?: ExpansionStrategy;
 }
 
 export interface CreateRunParams {
@@ -39,7 +47,7 @@ export interface ExecuteRunParams {
   runId: string;
   query: UIResolvedQuery;
   /** All selected keywords from Step 1 - first entry is the seed keyword */
-  keywords: string[];
+  keywords: ExpandedSuggestion[];
 }
 
 export interface DiscoveryStats {
@@ -80,7 +88,7 @@ export interface BusinessRecord {
   category: string;
 }
 
-// ─── Facade interface ────────────────────────────────────────────────────────
+// â”€â”€â”€ Facade interface â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface IRuntimeFacade {
   expandKeyword(params: ExpandKeywordParams): Promise<ExpansionResponse>;
@@ -91,7 +99,7 @@ export interface IRuntimeFacade {
   exportRun(runId: string, format: ExportFormat): Promise<void>;
 }
 
-// ─── UI state types ──────────────────────────────────────────────────────────
+// â”€â”€â”€ UI state types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type Phase = 'idle' | 'loading' | 'done' | 'error';
 
@@ -106,8 +114,9 @@ export interface DiscoveryFlowState {
   phase: Phase;
   keyword: string;
   location: string;
-  suggestions: string[];
-  selectedKeywords: string[];
+  suggestions: ExpandedSuggestion[];
+  selectedKeywords: ExpandedSuggestion[];
+  expansionStrategy: ExpansionStrategy;
   runId: string | null;
   runStatus: RunStatus;
   progress: number;
@@ -120,7 +129,7 @@ export interface DiscoveryFlowState {
   currentSeed: string | null;
 }
 
-// ─── Mock facade (for development / Storybook) ───────────────────────────────
+// â”€â”€â”€ Mock facade (for development / Storybook) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Components never import this directly. DiscoveryPage uses it as the default
 // prop value. Swap for a real HTTP client by passing facade={realClient}.
 
@@ -152,7 +161,7 @@ export const mockFacade: IRuntimeFacade = {
     const loc = location ?? 'Austin TX';
     const suggestions = MOCK_SUGGESTIONS
       .slice(0, limit)
-      .map(s => s.replace(/Austin( TX)?/g, loc));
+      .map(s => ({ keyword: s.replace(/Austin( TX)?/g, loc), strategy: 'commercial' as ExpansionStrategy }));
     return delay(1400, { original: keyword, suggestions });
   },
 

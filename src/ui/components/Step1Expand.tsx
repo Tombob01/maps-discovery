@@ -1,17 +1,19 @@
-import React, { useRef, useEffect } from 'react';
-import type { Phase } from '../types/ui';
+﻿import React, { useRef, useEffect } from 'react';
+import type { Phase, ExpandedSuggestion, ExpansionStrategy } from '../types/ui';
 
 interface Props {
   keyword: string;
   location: string;
   phase: Phase;
-  suggestions: string[];
-  selectedKeywords: string[];
+  suggestions: ExpandedSuggestion[];
+  selectedKeywords: ExpandedSuggestion[];
+  expansionStrategy: ExpansionStrategy;
   error: string | null;
   onKeywordChange: (value: string) => void;
   onLocationChange: (value: string) => void;
   onExpand: () => void;
-  onToggleKeyword: (kw: string) => void;
+  onToggleKeyword: (suggestion: ExpandedSuggestion) => void;
+  onStrategyChange: (strategy: ExpansionStrategy) => void;
   onNext: () => void;
 }
 
@@ -26,6 +28,8 @@ export function Step1Expand({
   onLocationChange,
   onExpand,
   onToggleKeyword,
+  onStrategyChange,
+  expansionStrategy,
   onNext,
 }: Props): React.ReactElement {
   const keywordRef = useRef<HTMLInputElement>(null);
@@ -97,6 +101,22 @@ export function Step1Expand({
           />
         </div>
 
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] text-neutral-500 dark:text-neutral-400">
+            Strategy
+          </label>
+          <select
+            value={expansionStrategy}
+            onChange={e => onStrategyChange(e.target.value as ExpansionStrategy)}
+            disabled={isLoading}
+            className="h-9 rounded-lg border px-3 text-sm border-neutral-200 bg-white text-neutral-900 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 disabled:opacity-50 outline-none"
+          >
+            <option value="commercial">Commercial</option>
+            <option value="discovery">Discovery</option>
+            <option value="geographic">Geographic</option>
+          </select>
+        </div>
+
         <button
           type="button"
           onClick={onExpand}
@@ -112,7 +132,7 @@ export function Step1Expand({
           {isLoading ? (
             <>
               <SpinnerIcon />
-              expanding…
+              expandingâ€¦
             </>
           ) : (
             <>
@@ -142,33 +162,44 @@ export function Step1Expand({
             {suggestions.length} suggestions — tap to select the keywords you want to use
           </p>
 
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Keyword suggestions">
-            {suggestions.map(s => {
-              const selected = selectedKeywords.includes(s);
-              return (
-                <button
-                  key={s}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => onToggleKeyword(s)}
-                  className={[
-                    'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition',
-                    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500',
-                    selected
-                      ? 'border-violet-300 bg-violet-50 text-violet-800 dark:border-violet-600 dark:bg-violet-950 dark:text-violet-300'
-                      : 'border-neutral-200 bg-neutral-50 text-neutral-600 hover:border-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:border-neutral-600',
-                  ].join(' ')}
-                >
-                  {s}
-                  {selected && (
-                    <span aria-hidden="true" className="opacity-50">
-                      ✕
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          {(['commercial', 'discovery', 'geographic'] as ExpansionStrategy[])
+            .filter(st => suggestions.some(s => s.strategy === st))
+            .map(st => (
+              <div key={st} className="mb-3">
+                <p className="mb-1.5 text-[11px] font-medium uppercase tracking-widest text-neutral-400 dark:text-neutral-500">
+                  {st}
+                </p>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label={st + ' keyword suggestions'}>
+                  {suggestions.filter(s => s.strategy === st).map(s => {
+                    const selected = selectedKeywords.some(
+                      sel => sel.keyword === s.keyword && sel.strategy === s.strategy
+                    );
+                    return (
+                      <button
+                        key={s.keyword + ':' + s.strategy}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => onToggleKeyword(s)}
+                        className={[
+                          'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition',
+                          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500',
+                          selected
+                            ? 'border-violet-300 bg-violet-50 text-violet-800 dark:border-violet-600 dark:bg-violet-950 dark:text-violet-300'
+                            : 'border-neutral-200 bg-neutral-50 text-neutral-600 hover:border-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:border-neutral-600',
+                        ].join(' ')}
+                      >
+                        {s.keyword}
+                        {selected && (
+                          <span aria-hidden="true" className="opacity-50">
+                            {'\u2715'}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
 
           <div className="mt-4 flex justify-end">
             <button
@@ -192,7 +223,7 @@ export function Step1Expand({
   );
 }
 
-// ─── Inline micro-icons (no external dep) ────────────────────────────────────
+// â”€â”€â”€ Inline micro-icons (no external dep) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function SpinnerIcon() {
   return (

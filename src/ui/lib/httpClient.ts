@@ -1,9 +1,9 @@
-/**
+ï»¿/**
  * @module ui/lib/httpClient
  * Implements IRuntimeFacade via fetch() against the Hono HTTP server.
  *
  * Maps between the UI's simplified types and the backend's richer shapes.
- * No business logic — pure adapter.
+ * No business logic â€” pure adapter.
  */
 
 import type {
@@ -17,6 +17,8 @@ import type {
   Run,
   BusinessRecord,
   ExportFormat,
+  ExpandedSuggestion,
+  ExpansionStrategy,
 } from '../types/ui';
 
 // ---------------------------------------------------------------------------
@@ -76,7 +78,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // ---------------------------------------------------------------------------
-// Backend response shapes (richer than UI types — mapped below)
+// Backend response shapes (richer than UI types â€” mapped below)
 // ---------------------------------------------------------------------------
 
 interface BackendExpandedKeyword {
@@ -134,10 +136,10 @@ interface BackendRecordPage {
 // Mappers: backend -> UI types
 // ---------------------------------------------------------------------------
 
-function toUISuggestions(backend: BackendExpansionResponse): ExpansionResponse {
+function toUISuggestions(backend: BackendExpansionResponse, strategy: ExpansionStrategy): ExpansionResponse {
   return {
     original: backend.original,
-    suggestions: backend.suggestions.map((s) => s.keyword),
+    suggestions: backend.suggestions.map((s): ExpandedSuggestion => ({ keyword: s.keyword, strategy })),
   };
 }
 
@@ -175,11 +177,12 @@ export const httpClient: IRuntimeFacade = {
     const body: Record<string, unknown> = { keyword: params.keyword };
     if (params.location !== undefined) body['location'] = params.location;
     if (params.limit !== undefined) body['limit'] = params.limit;
+    if (params.strategy !== undefined) body['strategy'] = params.strategy;
     const data = await apiFetch<BackendExpansionResponse>('/api/expand', {
       method: 'POST',
       body: JSON.stringify(body),
     });
-    return toUISuggestions(data);
+    return toUISuggestions(data, params.strategy ?? 'commercial');
   },
 
   async createRun(params: CreateRunParams): Promise<CreateRunResult> {
@@ -192,7 +195,7 @@ export const httpClient: IRuntimeFacade = {
 
   async executeRun(params: ExecuteRunParams): Promise<ExecutionSummary> {
     const seeds = params.keywords.length > 0
-      ? params.keywords.map(kw => ({ keyword: kw, location: params.query.location }))
+      ? params.keywords.map(s => ({ keyword: s.keyword, location: params.query.location, strategy: s.strategy }))
       : [{ keyword: params.query.niche, location: params.query.location }];
     await apiFetch<{ runId: string; status: string }>(`/api/runs/${params.runId}/execute`,
       {

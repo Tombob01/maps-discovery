@@ -207,7 +207,9 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
     intervalId = setInterval(() => {
       if (Date.now() - startedAt > MAX_POLL_MS) {
         stopPolling();
-        addEvent('Polling stopped after 90 minutes. The run may still be active on the server -- refresh the page to reconnect and see its current status.', 'warn');
+        addEvent('Run is taking longer than expected.', 'warn');
+        dispatch({ type: 'SET_RUN_STATUS', status: 'failed' });
+        dispatch({ type: 'SET_ERROR', error: 'Run is taking longer than expected.' });
         return;
       }
       facade.getRun(activeRunId).then(run => {

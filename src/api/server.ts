@@ -1,13 +1,13 @@
-/**
+﻿/**
  * @module api/server
  * Thin HTTP adapter over RuntimeFacade.
  * Routes map 1:1 to facade methods. No business logic here.
  *
- * POST /api/expand            → facade.expandKeyword()
- * POST /api/runs              → facade.createRun()
- * POST /api/runs/:id/execute  → facade.executeFromSeed()
- * GET  /api/runs/:id          → facade.getRun()
- * GET  /api/runs/:id/records  → facade.listRecords()
+ * POST /api/expand            â†’ facade.expandKeyword()
+ * POST /api/runs              â†’ facade.createRun()
+ * POST /api/runs/:id/execute  â†’ facade.executeFromSeed()
+ * GET  /api/runs/:id          â†’ facade.getRun()
+ * GET  /api/runs/:id/records  â†’ facade.listRecords()
  */
 
 import { Hono } from "hono";
@@ -23,6 +23,7 @@ interface ExpandBody {
   keyword: string;
   location?: string;
   limit?: number;
+  strategy?: string;
 }
 
 interface CreateRunBody {
@@ -36,6 +37,7 @@ interface ExecuteRunBody {
   seeds: Array<{
     keyword: string;
     location: string;
+    strategy?: string;
   }>;
 }
 
@@ -54,7 +56,7 @@ export function createServer(
 ): Hono {
   const app = new Hono();
 
-  // Concurrency guard � one discovery run at a time
+  // Concurrency guard ï¿½ one discovery run at a time
   let isExecuting = false;
   // Runtime-only visibility state.
   //
@@ -92,6 +94,9 @@ export function createServer(
       keyword: body.keyword.trim(),
       ...(body.location ? { location: body.location } : {}),
       ...(body.limit !== undefined ? { limit: body.limit } : {}),
+      ...(body.strategy === "commercial" || body.strategy === "discovery" || body.strategy === "geographic"
+        ? { strategy: body.strategy }
+        : {}),
     });
 
     return c.json({ ok: true, data: result });
@@ -175,7 +180,7 @@ export function createServer(
     isExecuting = true;
     void (async () => {
 
-    // Background pipeline � client polls GET /api/runs/:id for updates.
+    // Background pipeline — client polls GET /api/runs/:id for updates.
       for (const seed of seedsCopy) {
         currentSeedByRun.set(runId, seed.keyword);
         try {
@@ -190,7 +195,7 @@ export function createServer(
             "[execute:seed-failed] keyword=" + seed.keyword +
             " error=" + (err instanceof Error ? err.message : String(err)),
           );
-          // continue to next seed � failure of one keyword must not stop the batch
+          // continue to next seed — failure of one keyword must not stop the batch
         }
       }
     })()
@@ -336,7 +341,7 @@ function buildMockProvider(id: string): import("../core/interfaces/IProvider.js"
     checkHealth: async () => ({ status: "healthy" as const }),
     shutdown: async () => {},
     discover: async function* () {
-      // Yields nothing — normalization stage will process an empty set
+      // Yields nothing â€” normalization stage will process an empty set
     },
   };
 }

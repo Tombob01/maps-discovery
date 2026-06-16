@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import type { IRuntimeFacade } from '../types/ui';
 import { mockFacade } from '../types/ui';
 import { useDiscoveryFlow } from '../hooks/useDiscoveryFlow';
@@ -33,7 +33,7 @@ export function DiscoveryPage({ facade = mockFacade }: Props): React.ReactElemen
 
         {/* Layout: rail + content */}
         <div className="flex gap-8">
-          {/* Step rail — hidden on small screens */}
+          {/* Step rail â€” hidden on small screens */}
           <aside className="hidden w-44 flex-shrink-0 sm:block">
             <StepRail currentStep={state.step} />
           </aside>
@@ -48,12 +48,14 @@ export function DiscoveryPage({ facade = mockFacade }: Props): React.ReactElemen
                 location={state.location}
                 phase={state.phase}
                 suggestions={state.suggestions}
+                expansionStrategy={state.expansionStrategy}
                 selectedKeywords={state.selectedKeywords}
                 error={state.error}
                 onKeywordChange={actions.setKeyword}
                 onLocationChange={actions.setLocation}
                 onExpand={actions.expandKeyword}
                 onToggleKeyword={actions.toggleKeyword}
+                onStrategyChange={actions.setStrategy}
                 onNext={actions.goToSelect}
               />
             )}

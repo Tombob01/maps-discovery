@@ -1,8 +1,8 @@
-import React from 'react';
-import type { Phase } from '../types/ui';
+﻿import React from 'react';
+import type { Phase, ExpandedSuggestion } from '../types/ui';
 
 interface Props {
-  selectedKeywords: string[];
+  selectedKeywords: ExpandedSuggestion[];
   location: string;
   phase: Phase;
   error: string | null;
@@ -36,11 +36,11 @@ export function Step2Select({
         <div className="flex flex-wrap gap-1.5" role="list" aria-label="Selected keywords">
           {selectedKeywords.map(kw => (
             <span
-              key={kw}
+              key={kw.keyword + ':' + kw.strategy}
               role="listitem"
               className="inline-flex items-center rounded-full border border-violet-300 bg-violet-50 px-3 py-1 text-xs text-violet-800 dark:border-violet-600 dark:bg-violet-950 dark:text-violet-300"
             >
-              {kw}
+              {kw.keyword}
             </span>
           ))}
         </div>
@@ -140,7 +140,7 @@ export function Step2Select({
           {isLoading ? (
             <>
               <SpinnerIcon />
-              running…
+              runningâ€¦
             </>
           ) : (
             <>
@@ -154,7 +154,7 @@ export function Step2Select({
   );
 }
 
-// ─── Micro-icons ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Micro-icons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function AlertIcon() {
   return (

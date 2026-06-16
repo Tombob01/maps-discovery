@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer } from 'react';
+﻿import { useCallback, useReducer } from 'react';
 import type {
   IRuntimeFacade,
   DiscoveryFlowState,
@@ -15,9 +15,6 @@ import type {
 } from '../types/ui';
 
 // --- State shape & reducer ---------------------------------------------------
-
-// [MVP-3] Single key used for all localStorage reads and writes.
-const ACTIVE_RUN_KEY = 'maps_discovery_active_run_id';
 
 type Action =
   | { type: 'SET_KEYWORD'; keyword: string }
@@ -152,153 +149,6 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
     dispatch({ type: 'ADD_EVENT', entry: { time: ts(), msg, level } });
   }
 
-  // [MVP-1] beginPolling hoisted to hook scope so both startRun and the
-  // recovery useEffect below can call it. Body is verbatim from the
-  // original inline implementation inside startRun's executeRun().then() --
-  // only the enclosing scope changed, and runId is now a parameter
-  // (activeRunId) instead of a closure variable.
-  function beginPolling(activeRunId: string): void {
-    const POLL_INTERVAL_MS = 5_000;
-    const MAX_POLL_MS = 90 * 60 * 1_000;
-    const startedAt = Date.now();
-    let intervalId: ReturnType<typeof setInterval>;
-    let lastLoggedSeed: string | null = null;
-
-    function stopPolling() { clearInterval(intervalId); }
-
-    function onComplete(run: import('../types/ui').Run) {
-      stopPolling();
-      // [MVP-3] Backend confirmed completion -- clear the persisted key.
-      try { localStorage.removeItem(ACTIVE_RUN_KEY); } catch { /* ignore */ }
-      dispatch({ type: 'SET_RUN_STATUS', status: run.status });
-      dispatch({ type: 'SET_STATS', stats: run.stats });
-      dispatch({ type: 'SET_PROGRESS', progress: 90 });
-      addEvent('fetching records...', 'info');
-      facade.listRecords(activeRunId).then(records => {
-        addEvent(records.length + ' records loaded', 'ok');
-        dispatch({ type: 'SET_RECORDS', records });
-        dispatch({ type: 'SET_PHASE', phase: 'done' });
-        dispatch({ type: 'SET_PROGRESS', progress: 100 });
-        dispatch({ type: 'SET_STEP', step: 'results' });
-      }).catch(() => {
-        dispatch({ type: 'SET_PHASE', phase: 'done' });
-        dispatch({ type: 'SET_PROGRESS', progress: 100 });
-        dispatch({ type: 'SET_STEP', step: 'results' });
-      });
-    }
-
-    function onFailed(run: import('../types/ui').Run) {
-      stopPolling();
-      // [MVP-3] Backend confirmed failure -- clear the persisted key.
-      try { localStorage.removeItem(ACTIVE_RUN_KEY); } catch { /* ignore */ }
-      dispatch({ type: 'SET_RUN_STATUS', status: 'failed' });
-      dispatch({ type: 'SET_STATS', stats: run.stats });
-      dispatch({ type: 'SET_ERROR', error: 'Discovery run failed.' });
-      addEvent('run failed -- loading partial records...', 'err');
-      facade.listRecords(activeRunId).then(records => {
-        if (records.length > 0) {
-          addEvent(records.length + ' records loaded (partial run)', 'ok');
-          dispatch({ type: 'SET_RECORDS', records });
-          dispatch({ type: 'SET_STEP', step: 'results' });
-        }
-      }).catch(() => { /* no records to show */ });
-    }
-
-    intervalId = setInterval(() => {
-      if (Date.now() - startedAt > MAX_POLL_MS) {
-        stopPolling();
-        addEvent('Polling stopped after 90 minutes. The run may still be active on the server -- refresh the page to reconnect and see its current status.', 'warn');
-        return;
-      }
-      facade.getRun(activeRunId).then(run => {
-        dispatch({ type: 'SET_STATS', stats: run.stats });
-        dispatch({ type: 'SET_CURRENT_SEED', seed: run.currentSeed ?? null });
-        const pct = Math.min(85, 30 + Math.round(
-          (run.stats.normalized / Math.max(1, run.stats.discovered)) * 55
-        ));
-        dispatch({ type: 'SET_PROGRESS', progress: pct });
-
-        if (run.status === 'complete' && (run.currentSeed ?? null) === null) {
-          // All seeds have finished -- this is true workflow completion.
-          onComplete(run);
-        } else if (run.status === 'complete' && (run.currentSeed ?? null) !== null) {
-          // One seed finished but more are still running.
-          // Refresh records so the UI reflects accumulated results,
-          // then continue polling.
-          if (run.currentSeed !== lastLoggedSeed) {
-            addEvent('seed complete, continuing -- keyword: ' + (run.currentSeed ?? ''), 'info');
-            lastLoggedSeed = run.currentSeed ?? null;
-          }
-          facade.listRecords(activeRunId).then(records => {
-            dispatch({ type: 'SET_RECORDS', records });
-          }).catch(() => { /* refresh failed -- will retry on next tick */ });
-        } else if (run.status === 'failed') {
-          onFailed(run);
-        }
-      }).catch(() => { /* poll tick failed -- will retry */ });
-    }, POLL_INTERVAL_MS);
-  }
-
-  // [MVP-4] Mount-time recovery effect. Reads the persisted runId, validates
-  // it against the backend, and resumes the appropriate UI state. No-ops
-  // when no key is present. Does not call createRun or executeRun -- never
-  // starts a new run.
-  useEffect(() => {
-    let storedRunId: string | null = null;
-    try {
-      storedRunId = localStorage.getItem(ACTIVE_RUN_KEY);
-    } catch {
-      return; // localStorage unavailable -- start normally
-    }
-    if (!storedRunId) return;
-
-    dispatch({ type: 'SET_RUN_ID', runId: storedRunId });
-    dispatch({ type: 'SET_STEP', step: 'run' });
-    addEvent('recovering run: ' + storedRunId, 'info');
-
-    facade.getRun(storedRunId).then(run => {
-      dispatch({ type: 'SET_STATS', stats: run.stats });
-      dispatch({ type: 'SET_CURRENT_SEED', seed: run.currentSeed ?? null });
-
-      if (run.status === 'pending' || run.status === 'running') {
-        dispatch({ type: 'SET_RUN_STATUS', status: run.status });
-        dispatch({ type: 'SET_PROGRESS', progress: 30 });
-        addEvent('run is active -- resuming polling...', 'info');
-        beginPolling(storedRunId as string);
-      } else if (run.status === 'complete' && (run.currentSeed ?? null) === null) {
-        // Completed while tab was closed -- beginPolling then onComplete
-        // (inside it) handles the localStorage clear and record fetch on
-        // the next tick, since status is already complete.
-        addEvent('run already complete -- loading results...', 'info');
-        beginPolling(storedRunId as string);
-      } else if (run.status === 'complete' && (run.currentSeed ?? null) !== null) {
-        dispatch({ type: 'SET_RUN_STATUS', status: run.status });
-        dispatch({ type: 'SET_PROGRESS', progress: 30 });
-        addEvent('seed in progress -- resuming polling...', 'info');
-        beginPolling(storedRunId as string);
-      } else if (run.status === 'failed') {
-        dispatch({ type: 'SET_RUN_STATUS', status: 'failed' });
-        dispatch({ type: 'SET_STATS', stats: run.stats });
-        dispatch({ type: 'SET_ERROR', error: 'Discovery run failed.' });
-        addEvent('run failed -- loading partial records...', 'err');
-        try { localStorage.removeItem(ACTIVE_RUN_KEY); } catch { /* ignore */ }
-        facade.listRecords(storedRunId as string).then(records => {
-          if (records.length > 0) {
-            addEvent(records.length + ' records loaded (partial run)', 'ok');
-            dispatch({ type: 'SET_RECORDS', records });
-            dispatch({ type: 'SET_STEP', step: 'results' });
-          }
-        }).catch(() => { /* no records to show */ });
-      }
-    }).catch(() => {
-      // getRun failed -- stale or invalid runId. Clear key and return to Step 1.
-      try { localStorage.removeItem(ACTIVE_RUN_KEY); } catch { /* ignore */ }
-      addEvent('stored run not found -- starting fresh', 'warn');
-      dispatch({ type: 'SET_STEP', step: 'expand' });
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facade]);
-
   const setKeyword = useCallback((keyword: string) => {
     dispatch({ type: 'SET_KEYWORD', keyword });
   }, []);
@@ -360,8 +210,6 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
       .then(({ runId }) => {
         addEvent('run created: ' + runId, 'ok');
         dispatch({ type: 'SET_RUN_ID', runId });
-        // [MVP-3] Persist so mount-time recovery can find this run after refresh.
-        try { localStorage.setItem(ACTIVE_RUN_KEY, runId); } catch { /* ignore */ }
         dispatch({ type: 'SET_RUN_STATUS', status: 'running' });
         dispatch({ type: 'SET_PROGRESS', progress: 20 });
         dispatch({ type: 'SET_STEP', step: 'run' });
@@ -375,8 +223,84 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
         }).then(() => {
           addEvent('discovery started -- polling for status...', 'info');
           dispatch({ type: 'SET_PROGRESS', progress: 30 });
-          // [MVP-1] Delegate to the hoisted beginPolling.
-          beginPolling(runId);
+
+          const POLL_INTERVAL_MS = 5_000;
+          const MAX_POLL_MS = 90 * 60 * 1_000;
+          const startedAt = Date.now();
+          let intervalId: ReturnType<typeof setInterval>;
+          let lastLoggedSeed: string | null = null;
+
+          function stopPolling() { clearInterval(intervalId); }
+
+          function onComplete(run: import('../types/ui').Run) {
+            stopPolling();
+            dispatch({ type: 'SET_RUN_STATUS', status: run.status });
+            dispatch({ type: 'SET_STATS', stats: run.stats });
+            dispatch({ type: 'SET_PROGRESS', progress: 90 });
+            addEvent('fetching records...', 'info');
+            facade.listRecords(runId).then(records => {
+              addEvent(records.length + ' records loaded', 'ok');
+              dispatch({ type: 'SET_RECORDS', records });
+              dispatch({ type: 'SET_PHASE', phase: 'done' });
+              dispatch({ type: 'SET_PROGRESS', progress: 100 });
+              dispatch({ type: 'SET_STEP', step: 'results' });
+            }).catch(() => {
+              dispatch({ type: 'SET_PHASE', phase: 'done' });
+              dispatch({ type: 'SET_PROGRESS', progress: 100 });
+              dispatch({ type: 'SET_STEP', step: 'results' });
+            });
+          }
+
+          function onFailed(run: import('../types/ui').Run) {
+            stopPolling();
+            dispatch({ type: 'SET_RUN_STATUS', status: 'failed' });
+            dispatch({ type: 'SET_STATS', stats: run.stats });
+            dispatch({ type: 'SET_ERROR', error: 'Discovery run failed.' });
+            addEvent('run failed -- loading partial records...', 'err');
+            facade.listRecords(runId).then(records => {
+              if (records.length > 0) {
+                addEvent(records.length + ' records loaded (partial run)', 'ok');
+                dispatch({ type: 'SET_RECORDS', records });
+                dispatch({ type: 'SET_STEP', step: 'results' });
+              }
+            }).catch(() => { /* no records to show */ });
+          }
+
+          intervalId = setInterval(() => {
+            if (Date.now() - startedAt > MAX_POLL_MS) {
+              stopPolling();
+              addEvent('Run is taking longer than expected.', 'warn');
+              dispatch({ type: 'SET_RUN_STATUS', status: 'failed' });
+              dispatch({ type: 'SET_ERROR', error: 'Run is taking longer than expected.' });
+              return;
+            }
+            facade.getRun(runId).then(run => {
+              dispatch({ type: 'SET_STATS', stats: run.stats });
+              dispatch({ type: 'SET_CURRENT_SEED', seed: run.currentSeed ?? null });
+              const pct = Math.min(85, 30 + Math.round(
+                (run.stats.normalized / Math.max(1, run.stats.discovered)) * 55
+              ));
+              dispatch({ type: 'SET_PROGRESS', progress: pct });
+
+              if (run.status === 'complete' && (run.currentSeed ?? null) === null) {
+                // All seeds have finished — this is true workflow completion.
+                onComplete(run);
+              } else if (run.status === 'complete' && (run.currentSeed ?? null) !== null) {
+                // One seed finished but more are still running.
+                // Refresh records so the UI reflects accumulated results,
+                // then continue polling.
+                if (run.currentSeed !== lastLoggedSeed) {
+                  addEvent('seed complete, continuing -- keyword: ' + (run.currentSeed ?? ''), 'info');
+                  lastLoggedSeed = run.currentSeed ?? null;
+                }
+                facade.listRecords(runId).then(records => {
+                  dispatch({ type: 'SET_RECORDS', records });
+                }).catch(() => { /* refresh failed -- will retry on next tick */ });
+              } else if (run.status === 'failed') {
+                onFailed(run);
+              }
+            }).catch(() => { /* poll tick failed -- will retry */ });
+          }, POLL_INTERVAL_MS);
         });
       })
       .catch((err: unknown) => {
