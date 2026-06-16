@@ -56,3 +56,7 @@ test_export.csv
 
 # TypeScript incremental build cache
 tsconfig.tsbuildinfo
+
+# Manual/editor backup files
+*.bak
+*.bak-*
