@@ -4,9 +4,9 @@
  * Detects runs stuck in "running" state and marks them as failed.
  *
  * Two entry points:
- *   recoverStaleRuns() — call once at startup to fail runs left over from a
+ *   recoverStaleRuns() ï¿½ call once at startup to fail runs left over from a
  *                        previous crashed process.
- *   start()            — begins a periodic scan; returns a stop() function.
+ *   start()            ï¿½ begins a periodic scan; returns a stop() function.
  *
  * Staleness is determined by startedAt, not updated_at (no schema change
  * required). A run is stale when:
@@ -47,7 +47,7 @@ export interface RunWatchdogOptions {
   readonly scanIntervalMs?: number;
 
   /**
-   * Injectable clock — returns current time in milliseconds.
+   * Injectable clock ï¿½ returns current time in milliseconds.
    * Default: Date.now. Override in tests for deterministic behaviour.
    */
   readonly nowMs?: () => number;
@@ -94,7 +94,7 @@ export class RunWatchdog {
 
   /**
    * Starts periodic scanning.
-   * Returns a stop() function — call it during graceful shutdown.
+   * Returns a stop() function ï¿½ call it during graceful shutdown.
    */
   start(): () => void {
     if (this.intervalHandle !== null) {
@@ -126,7 +126,7 @@ export class RunWatchdog {
   }
 
   // ---------------------------------------------------------------------------
-  // Core scan logic — shared by startup recovery and periodic scans
+  // Core scan logic ï¿½ shared by startup recovery and periodic scans
   // ---------------------------------------------------------------------------
 
   /**
@@ -140,24 +140,16 @@ export class RunWatchdog {
     const now = this.nowMs();
     const cutoff = now - this.maxRunAgeMs;
 
-    let runs: readonly import("../core/models/Job.js").Run[];
+    let candidates: readonly import("../core/models/Job.js").Run[];
     try {
-      runs = await this.runStore.list();
+      candidates = await this.runStore.listStaleRunning(new Date(cutoff));
     } catch (err) {
       console.error(
-        `[watchdog:${reason}] failed to list runs:`,
+        `[watchdog:${reason}] failed to list stale running runs:`,
         err instanceof Error ? err.message : String(err),
       );
       return { failed: 0, skipped: 0 };
     }
-
-    // First pass: identify candidates from the list snapshot
-    const candidates = runs.filter(
-      (r) =>
-        r.status === "running" &&
-        r.startedAt !== null &&
-        r.startedAt.getTime() < cutoff,
-    );
 
     let failed = 0;
     let skipped = 0;
@@ -201,7 +193,7 @@ export class RunWatchdog {
 
     if (failed > 0 || candidates.length > 0) {
       console.log(
-        `[watchdog:${reason}] scan complete — candidates=${candidates.length} failed=${failed} skipped=${skipped}`,
+        `[watchdog:${reason}] scan complete ï¿½ candidates=${candidates.length} failed=${failed} skipped=${skipped}`,
       );
     }
 

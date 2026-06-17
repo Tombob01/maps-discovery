@@ -54,6 +54,14 @@ function makeRunStore(runs: Run[] = []): IRunStore {
       runs.find((r) => r.id === id) ?? null,
     ),
     list: vi.fn().mockResolvedValue(runs),
+    listStaleRunning: vi.fn().mockImplementation(async (olderThan: Date) =>
+      runs.filter(
+        (r) =>
+          r.status === "running" &&
+          r.startedAt !== null &&
+          r.startedAt.getTime() < olderThan.getTime(),
+      ),
+    ),
     update: vi.fn(),
     delete: vi.fn(),
   };
@@ -85,7 +93,7 @@ function makeWatchdog(
 }
 
 // ---------------------------------------------------------------------------
-// _scanOnce — core logic
+// _scanOnce ï¿½ core logic
 // ---------------------------------------------------------------------------
 
 describe("RunWatchdog._scanOnce", () => {
@@ -161,7 +169,7 @@ describe("RunWatchdog._scanOnce", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Race-condition guard — re-read before fail
+// Race-condition guard ï¿½ re-read before fail
 // ---------------------------------------------------------------------------
 
 describe("RunWatchdog race-condition guard", () => {
@@ -177,6 +185,7 @@ describe("RunWatchdog race-condition guard", () => {
     const store: IRunStore = {
       create: vi.fn(),
       list: vi.fn().mockResolvedValue([staleRun]),
+      listStaleRunning: vi.fn().mockResolvedValue([staleRun]),
       getById: vi.fn().mockResolvedValue(freshRun),
       update: vi.fn(),
       delete: vi.fn(),
@@ -199,6 +208,7 @@ describe("RunWatchdog race-condition guard", () => {
     const store: IRunStore = {
       create: vi.fn(),
       list: vi.fn().mockResolvedValue([staleRun]),
+      listStaleRunning: vi.fn().mockResolvedValue([staleRun]),
       getById: vi.fn().mockResolvedValue(null), // disappeared
       update: vi.fn(),
       delete: vi.fn(),
@@ -217,7 +227,7 @@ describe("RunWatchdog race-condition guard", () => {
 });
 
 // ---------------------------------------------------------------------------
-// recoverStaleRuns — startup recovery
+// recoverStaleRuns ï¿½ startup recovery
 // ---------------------------------------------------------------------------
 
 describe("RunWatchdog.recoverStaleRuns", () => {
@@ -239,7 +249,7 @@ describe("RunWatchdog.recoverStaleRuns", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Periodic scan — start / stop
+// Periodic scan ï¿½ start / stop
 // ---------------------------------------------------------------------------
 
 describe("RunWatchdog start/stop", () => {

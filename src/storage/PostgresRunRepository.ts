@@ -114,6 +114,18 @@ export class PostgresRunRepository implements IRunStore {
     return rows.map(rowToRun);
   }
 
+  async listStaleRunning(olderThan: Date): Promise<readonly Run[]> {
+    const { rows } = await this.db.query<RunRow>(
+      `SELECT id, status, config, started_at, completed_at, created_at, stats
+         FROM runs
+        WHERE status = 'running'
+          AND started_at IS NOT NULL
+          AND started_at < $1`,
+      [olderThan],
+    );
+    return rows.map(rowToRun);
+  }
+
   // ---------------------------------------------------------------------------
   // update
   // ---------------------------------------------------------------------------

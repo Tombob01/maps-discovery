@@ -48,6 +48,11 @@ class InMemoryRunStore implements IRunStore {
   async list(): Promise<readonly Run[]> {
     return [...this.runs.values()];
   }
+  async listStaleRunning(olderThan: Date): Promise<readonly Run[]> {
+    return [...this.runs.values()].filter(
+      (r) => r.status === "running" && r.startedAt !== null && r.startedAt.getTime() < olderThan.getTime(),
+    );
+  }
   async update(run: Run): Promise<void> {
     this.runs.set(run.id, run);
   }

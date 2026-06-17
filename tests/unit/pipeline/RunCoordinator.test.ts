@@ -58,6 +58,14 @@ class StubRunStore implements IRunStore {
   async list(): Promise<readonly Run[]> {
     return [...this.map.values()];
   }
+  async listStaleRunning(olderThan: Date): Promise<readonly Run[]> {
+    return [...this.map.values()].filter(
+      (r) =>
+        r.status === "running" &&
+        r.startedAt !== null &&
+        r.startedAt.getTime() < olderThan.getTime(),
+    );
+  }
   async update(run: Run): Promise<void> {
     this.map.set(run.id, run);
     this.updates.push(run);
@@ -220,7 +228,7 @@ describe("RunCoordinator - lifecycle transitions", () => {
   it("transitions to failed and re-throws when drain throws", async () => {
     runStore.seed(makeRun());
 
-    // Queue that throws on dequeue — depth() must return a valid Result
+    // Queue that throws on dequeue ï¿½ depth() must return a valid Result
     // so PipelineRunner.drain() can log before entering the dequeue loop.
     const badQueue = {
       name: "bad",
