@@ -7,6 +7,7 @@ interface Props {
   progress: number;
   stats: RunStats | null;
   currentSeed?: string | null;
+  isPollingStalled: boolean;
 }
 
 const STATUS_CONFIG: Record<
@@ -39,14 +40,57 @@ const STATUS_CONFIG: Record<
   },
 };
 
+const STALLED_CONFIG = {
+  label: 'stalled',
+  dotClass: 'bg-amber-500',
+  badgeClass:
+    'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+};
+
+export function getStatusDisplay(
+  runStatus: RunStatus,
+  isPollingStalled: boolean,
+): { label: string; dotClass: string; badgeClass: string } {
+  if (runStatus === 'running' && isPollingStalled) {
+    return STALLED_CONFIG;
+  }
+  return STATUS_CONFIG[runStatus];
+}
+
+export function getExtractionHeading(
+  runStatus: RunStatus,
+  isPollingStalled: boolean,
+): string {
+  if (runStatus === 'complete') return 'Extraction complete';
+  if (runStatus === 'running' && isPollingStalled) return 'Updates paused';
+  return 'Extraction in progress';
+}
+
+export function getProgressBarColorClass(
+  runStatus: RunStatus,
+  isPollingStalled: boolean,
+): string {
+  if (runStatus === 'failed') return 'bg-red-500';
+  if (runStatus === 'running' && isPollingStalled) return 'bg-amber-500';
+  return 'bg-violet-600';
+}
+
+export function shouldAnimateProgressBar(
+  runStatus: RunStatus,
+  isPollingStalled: boolean,
+): boolean {
+  return !(runStatus === 'running' && isPollingStalled);
+}
+
 export function RunProgressRow({
   runId,
   runStatus,
   progress,
   stats,
   currentSeed,
+  isPollingStalled,
 }: Props): React.ReactElement {
-  const cfg = STATUS_CONFIG[runStatus];
+  const statusDisplay = getStatusDisplay(runStatus, isPollingStalled);
   const pct = Math.min(100, Math.max(0, Math.round(progress)));
 
   // Refinement 2: clamp extractionPercent to 0-100.
@@ -61,8 +105,7 @@ export function RunProgressRow({
     stats.discovered > 0 &&
     (runStatus === 'running' || runStatus === 'complete');
 
-  const extractionHeading =
-    runStatus === 'complete' ? 'Extraction complete' : 'Extraction in progress';
+  const extractionHeading = getExtractionHeading(runStatus, isPollingStalled);
 
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-700 dark:bg-neutral-900">
@@ -82,11 +125,11 @@ export function RunProgressRow({
         <span
           className={[
             'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium',
-            cfg.badgeClass,
+            statusDisplay.badgeClass,
           ].join(' ')}
         >
-          <span className={['h-1.5 w-1.5 rounded-full', cfg.dotClass].join(' ')} aria-hidden="true" />
-          {cfg.label}
+          <span className={['h-1.5 w-1.5 rounded-full', statusDisplay.dotClass].join(' ')} aria-hidden="true" />
+          {statusDisplay.label}
         </span>
       </div>
 
@@ -102,7 +145,7 @@ export function RunProgressRow({
         <div
           className={[
             'h-full rounded-full transition-all duration-500',
-            runStatus === 'failed' ? 'bg-red-500' : 'bg-violet-600',
+            getProgressBarColorClass(runStatus, isPollingStalled),
           ].join(' ')}
           style={{ width: `${pct}%` }}
         />
@@ -110,7 +153,13 @@ export function RunProgressRow({
       <p className="mt-1 text-right font-mono text-[11px] text-neutral-400">{pct}%</p>
 
       {/* Current keyword - only while running */}
-      {runStatus === 'running' && currentSeed != null && currentSeed !== '' && (
+      {runStatus === 'running' && isPollingStalled && (
+        <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+          Updates paused -- refresh the page to reconnect and see the latest status.
+        </p>
+      )}
+
+      {runStatus === 'running' && !isPollingStalled && currentSeed != null && currentSeed !== '' && (
         <p className="mt-2 text-xs text-violet-600 dark:text-violet-400">
           Current keyword: {currentSeed}
         </p>

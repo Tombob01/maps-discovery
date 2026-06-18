@@ -36,7 +36,8 @@ type Action =
   | { type: 'SET_STATS'; stats: RunStats }
   | { type: 'SET_EXPORT_PHASE'; phase: Phase }
   | { type: 'SET_EXPORT_ERROR'; error: string | null }
-  | { type: 'SET_CURRENT_SEED'; seed: string | null };
+  | { type: 'SET_CURRENT_SEED'; seed: string | null }
+  | { type: 'SET_POLLING_STALLED'; stalled: boolean };
 
 const initialState: DiscoveryFlowState = {
   step: 'expand',
@@ -56,9 +57,10 @@ const initialState: DiscoveryFlowState = {
   exportPhase: 'idle' as Phase,
   exportError: null,
   currentSeed: null,
+  isPollingStalled: false,
 };
 
-function reducer(state: DiscoveryFlowState, action: Action): DiscoveryFlowState {
+export function reducer(state: DiscoveryFlowState, action: Action): DiscoveryFlowState {
   switch (action.type) {
     case 'SET_KEYWORD':
       return { ...state, keyword: action.keyword };
@@ -111,6 +113,8 @@ function reducer(state: DiscoveryFlowState, action: Action): DiscoveryFlowState 
       return { ...state, exportError: action.error };
     case 'SET_CURRENT_SEED':
       return { ...state, currentSeed: action.seed };
+    case 'SET_POLLING_STALLED':
+      return { ...state, isPollingStalled: action.stalled };
     case 'SET_STRATEGY':
       return { ...state, expansionStrategy: action.strategy };
     default:
@@ -158,6 +162,7 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
   // only the enclosing scope changed, and runId is now a parameter
   // (activeRunId) instead of a closure variable.
   function beginPolling(activeRunId: string): void {
+    dispatch({ type: 'SET_POLLING_STALLED', stalled: false });
     const POLL_INTERVAL_MS = 5_000;
     const MAX_POLL_MS = 90 * 60 * 1_000;
     const startedAt = Date.now();
@@ -207,6 +212,7 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
     intervalId = setInterval(() => {
       if (Date.now() - startedAt > MAX_POLL_MS) {
         stopPolling();
+        dispatch({ type: 'SET_POLLING_STALLED', stalled: true });
         addEvent('Polling stopped after 90 minutes. The run may still be active on the server -- refresh the page to reconnect and see its current status.', 'warn');
         return;
       }

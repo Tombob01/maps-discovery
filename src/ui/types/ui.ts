@@ -127,6 +127,7 @@ export interface DiscoveryFlowState {
   exportPhase: Phase;
   exportError: string | null;
   currentSeed: string | null;
+  isPollingStalled: boolean;
 }
 
 // â”€â”€â”€ Mock facade (for development / Storybook) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

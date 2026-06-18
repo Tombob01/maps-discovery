@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import type { IRuntimeFacade } from '../types/ui';
 import { mockFacade } from '../types/ui';
 import { useDiscoveryFlow } from '../hooks/useDiscoveryFlow';
@@ -82,6 +82,7 @@ export function DiscoveryPage({ facade = mockFacade }: Props): React.ReactElemen
                   progress={state.progress}
                   stats={state.stats}
                   currentSeed={state.currentSeed}
+                  isPollingStalled={state.isPollingStalled}
                 />
 
                 <EventLog events={state.events} />
