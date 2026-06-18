@@ -162,8 +162,7 @@ export class PipelineRunner<T> {
       this.stats.failed++;
       const nackResult = await this.queue.nack(job.id, result.error.message);
       if (isOk(nackResult)) {
-        // Check if it got dead-lettered (attempts exhausted)
-        if (job.attempts >= job.maxAttempts) {
+        if (nackResult.value === "dead-lettered") {
           this.stats.deadLettered++;
         }
       }

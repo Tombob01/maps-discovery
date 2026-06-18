@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/unit/queue/InMemoryQueue.test.ts
  */
 
@@ -157,6 +157,29 @@ describe("InMemoryQueue â€” nack()", () => {
     const r = await q.dequeue();
     expect(isOk(r) && r.value).not.toBeNull();
     if (isOk(r) && r.value) expect(r.value.payload.task).toBe("retry");
+  });
+
+  it("nack returns 'retried' outcome when attempts remain", async () => {
+    await q.enqueue({ task: "retry", value: 1 });
+    const dq = await q.dequeue();
+    expect(isOk(dq) && dq.value).not.toBeNull();
+    if (isOk(dq) && dq.value) {
+      const r = await q.nack(dq.value.id, "transient");
+      expect(isOk(r)).toBe(true);
+      if (isOk(r)) expect(r.value).toBe("retried");
+    }
+  });
+
+  it("nack returns 'dead-lettered' outcome when attempts exhausted", async () => {
+    const single = new InMemoryQueue<Payload>("dl-outcome", { defaultMaxAttempts: 1 });
+    await single.enqueue({ task: "fail", value: 0 });
+    const dq = await single.dequeue();
+    expect(isOk(dq) && dq.value).not.toBeNull();
+    if (isOk(dq) && dq.value) {
+      const r = await single.nack(dq.value.id);
+      expect(isOk(r)).toBe(true);
+      if (isOk(r)) expect(r.value).toBe("dead-lettered");
+    }
   });
 
   it("nack returns err for unknown job id", async () => {

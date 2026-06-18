@@ -233,6 +233,26 @@ describe("BullMQQueue — nack()", () => {
     );
   });
 
+  it("nack returns 'retried' outcome when attempts not exhausted", async () => {
+    const bullJob = makeMockBullJob({ id: "1", attemptsMade: 0, opts: { attempts: 3 } });
+    mockWorkerGetNextJob.mockResolvedValue(bullJob);
+    const q = makeQueue();
+    await q.dequeue();
+    const r = await q.nack("1", "transient");
+    expect(isOk(r)).toBe(true);
+    if (isOk(r)) expect(r.value).toBe("retried");
+  });
+
+  it("nack returns 'dead-lettered' outcome when attempts exhausted", async () => {
+    const bullJob = makeMockBullJob({ id: "1", attemptsMade: 2, opts: { attempts: 2 } });
+    mockWorkerGetNextJob.mockResolvedValue(bullJob);
+    const q = makeQueue();
+    await q.dequeue();
+    const r = await q.nack("1", "final fail");
+    expect(isOk(r)).toBe(true);
+    if (isOk(r)) expect(r.value).toBe("dead-lettered");
+  });
+
   it("delegates retry decision entirely to BullMQ — does not re-enqueue manually", async () => {
     const bullJob = makeMockBullJob({ id: "1", attemptsMade: 0, opts: { attempts: 3 } });
     mockWorkerGetNextJob.mockResolvedValue(bullJob);

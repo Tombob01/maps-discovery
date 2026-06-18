@@ -51,6 +51,7 @@ import type {
   Job,
   EnqueueOptions,
   QueueError,
+  NackOutcome,
 } from "./IQueue.js";
 import { ok, err } from "../core/types/common.js";
 import type { Result } from "../core/types/common.js";
@@ -198,7 +199,7 @@ export class BullMQQueue<T> implements IQueue<T> {
   async nack(
     jobId: string,
     reason?: string,
-  ): Promise<Result<void, QueueError>> {
+  ): Promise<Result<NackOutcome, QueueError>> {
     const bullJob = this.inFlight.get(jobId);
     if (!bullJob) {
       return err({
@@ -214,7 +215,14 @@ export class BullMQQueue<T> implements IQueue<T> {
         false,
       );
       this.inFlight.delete(jobId);
-      return ok(undefined);
+      // BullMQ authoritative outcome: attemptsMade is updated by
+      // moveToFailed() itself, so comparing post-failure gives the
+      // correct dead-letter determination without any pre-nack inference.
+      const outcome: NackOutcome =
+        bullJob.attemptsMade >= (bullJob.opts.attempts ?? 1)
+          ? "dead-lettered"
+          : "retried";
+      return ok(outcome);
     } catch (e) {
       return err({
         code: "NACK_FAILED",

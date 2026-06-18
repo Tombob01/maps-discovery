@@ -41,6 +41,21 @@ export interface EnqueueOptions {
 }
 
 // ---------------------------------------------------------------------------
+// Nack outcome
+// ---------------------------------------------------------------------------
+
+/**
+ * Authoritative result of a nack() call, reported by the queue itself.
+ * Consumers (e.g. PipelineRunner) must use this rather than inferring
+ * dead-letter status from Job<T>.attempts/maxAttempts, since queue
+ * implementations differ on whether attempts is pre- or post-incremented
+ * at dequeue time.
+ */
+export type NackOutcome =
+  | "retried"
+  | "dead-lettered";
+
+// ---------------------------------------------------------------------------
 // IQueue
 // ---------------------------------------------------------------------------
 
@@ -66,9 +81,10 @@ export interface IQueue<T> {
 
   /**
    * Negative-acknowledge — returns the job to the queue for retry,
-   * or moves it to dead-letter if maxAttempts is reached.
+   * or moves it to dead-letter if maxAttempts is reached. The returned
+   * NackOutcome authoritatively reports which of the two occurred.
    */
-  nack(jobId: string, reason?: string): Promise<Result<void, QueueError>>;
+  nack(jobId: string, reason?: string): Promise<Result<NackOutcome, QueueError>>;
 
   /** Number of jobs currently in the queue (visible + invisible). */
   depth(): Promise<Result<number, QueueError>>;

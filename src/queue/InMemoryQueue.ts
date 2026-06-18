@@ -10,7 +10,7 @@
  * Nack'd jobs are re-enqueued (attempt count incremented) or dead-lettered.
  */
 
-import type { IQueue, Job, EnqueueOptions, QueueError } from "./IQueue.js";
+import type { IQueue, Job, EnqueueOptions, QueueError, NackOutcome } from "./IQueue.js";
 import { ok, err } from "../core/types/common.js";
 import type { Result } from "../core/types/common.js";
 
@@ -115,7 +115,7 @@ export class InMemoryQueue<T> implements IQueue<T> {
   async nack(
     jobId: string,
     reason?: string,
-  ): Promise<Result<void, QueueError>> {
+  ): Promise<Result<NackOutcome, QueueError>> {
     const internal = this.jobs.get(jobId);
     if (!internal) {
       return err({
@@ -124,16 +124,19 @@ export class InMemoryQueue<T> implements IQueue<T> {
       });
     }
 
+    let outcome: NackOutcome;
     if (internal.job.attempts >= internal.job.maxAttempts) {
       // Dead-letter it
       this.jobs.set(jobId, { ...internal, visible: false, deadLetter: true });
+      outcome = "dead-lettered";
     } else {
       // Return to queue
       this.jobs.set(jobId, { ...internal, visible: true });
+      outcome = "retried";
     }
 
     void reason; // available for logging in richer implementations
-    return ok(undefined);
+    return ok(outcome);
   }
 
   async depth(): Promise<Result<number, QueueError>> {

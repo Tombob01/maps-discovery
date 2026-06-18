@@ -69,6 +69,60 @@ const goodPayload = {
 // PipelineRunner — drain mode
 // ---------------------------------------------------------------------------
 
+describe("PipelineRunner — deadLettered stats", () => {
+  it("increments deadLettered exactly once after all retries exhausted (3 attempts)", async () => {
+    // drain() re-processes retried jobs within the same call until the queue is
+    // genuinely empty. With defaultMaxAttempts:3 and a stage that always fails,
+    // drain() fires the stage 3 times, nack() returns 'retried' twice and
+    // 'dead-lettered' once, producing failed:3 and deadLettered:1.
+    const queue = new InMemoryQueue<{ task: string }>("dl-test-retry", { defaultMaxAttempts: 3 });
+    const stage: IPipelineStage<{ task: string }> = {
+      stageName: "normalization",
+      async execute(): Promise<Result<StageResult, { code: string; message: string }>> {
+        return { ok: false, error: { code: "INFRA", message: "fail" } };
+      },
+    };
+    await queue.enqueue({ task: "a" });
+    const runner = new PipelineRunner(queue, stage);
+    await runner.drain();
+    expect(runner.stats.failed).toBe(3);
+    expect(runner.stats.deadLettered).toBe(1);
+  });
+
+  it("increments deadLettered when nack returns 'dead-lettered'", async () => {
+    const queue = new InMemoryQueue<{ task: string }>("dl-test-dead", { defaultMaxAttempts: 1 });
+    const stage: IPipelineStage<{ task: string }> = {
+      stageName: "normalization",
+      async execute(): Promise<Result<StageResult, { code: string; message: string }>> {
+        return { ok: false, error: { code: "INFRA", message: "fail" } };
+      },
+    };
+    await queue.enqueue({ task: "b" });
+    const runner = new PipelineRunner(queue, stage);
+    await runner.drain();
+    expect(runner.stats.deadLettered).toBe(1);
+    expect(runner.stats.failed).toBe(1);
+  });
+
+  it("deadLettered increments from queue-reported outcome, not attempt arithmetic", async () => {
+    // Regression test: PipelineRunner must NOT use job.attempts >= job.maxAttempts
+    // to infer dead-letter status. It must use nackResult.value === 'dead-lettered'.
+    // With InMemoryQueue (defaultMaxAttempts:1), one failure should produce
+    // exactly 1 deadLettered, not 0 (as the broken inference produced for BullMQQueue).
+    const queue = new InMemoryQueue<{ task: string }>("dl-regression", { defaultMaxAttempts: 1 });
+    const stage: IPipelineStage<{ task: string }> = {
+      stageName: "normalization",
+      async execute(): Promise<Result<StageResult, { code: string; message: string }>> {
+        return { ok: false, error: { code: "INFRA", message: "fail" } };
+      },
+    };
+    await queue.enqueue({ task: "c" });
+    const runner = new PipelineRunner(queue, stage);
+    await runner.drain();
+    expect(runner.stats.deadLettered).toBe(1);
+  });
+});
+
 describe("PipelineRunner — drain()", () => {
   it("processes all queued jobs and updates stats", async () => {
     const queue = new InMemoryQueue<{ task: string }>("test");
