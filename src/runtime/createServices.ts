@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @module runtime/createServices
  */
 
@@ -65,10 +65,7 @@ export function createServices(
   const rawResultStore: IRawResultStore = storage.rawResultStore;
   const normalizationQueue: IQueue<NormalizationJobPayload> =
     overrides.normalizationQueue ?? new InMemoryQueue<NormalizationJobPayload>("normalization");
-  (normalizationQueue as any)._instanceId = Math.random().toString(36).slice(2, 8);
-  console.log('[services:init] queue-instance=' + (normalizationQueue as any)._instanceId);
   const normalizer = new BusinessNormalizer([new GoogleMapsProviderMapper()]);
-  console.log('[services:coordinator] queue-ref=' + (normalizationQueue as any)._instanceId);
   const coordinator = new RunCoordinator(lifecycle, normalizer, normalizationQueue, {
     fetchRawResult: (id) => rawResultStore.fetch(id),
   });
@@ -81,7 +78,6 @@ export function createServices(
     ]);
   const runService = new RunService(storage.runServiceStore, storage.recordServiceStore, exporters);
   const createDiscoveryRunner = (provider: IProvider): DiscoveryRunner => {
-    console.log('[services:createDiscoveryRunner] queue-name=' + normalizationQueue.name + ' queue-ref=' + (normalizationQueue as any)._instanceId);
     return new DiscoveryRunner(provider, rawResultStore, normalizationQueue);
   };
   const runtimeExecutor = new RuntimeExecutor(createDiscoveryRunner, coordinator);
