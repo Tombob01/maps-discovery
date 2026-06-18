@@ -64,8 +64,7 @@ export class PipelineRunner<T> {
     let dequeued = 0;
 
     const depthBefore = await this.queue.depth();
-    const snapBefore = (this.queue as any).snapshot?.();
-    console.log('[drain:start] queue-depth=' + (depthBefore.ok ? depthBefore.value : '?') + ' snapshot=' + JSON.stringify(snapBefore));
+    console.log('[drain:start] queue-depth=' + (depthBefore.ok ? depthBefore.value : '?'));
 
     while (true) {
       const dequeueResult = await this.queue.dequeue();
@@ -92,8 +91,7 @@ export class PipelineRunner<T> {
     }
 
     const depthAfter = await this.queue.depth();
-    const snapAfter = (this.queue as any).snapshot?.();
-    console.log('[drain:end] dequeued=' + dequeued + ' succeeded=' + this.stats.succeeded + ' skipped=' + this.stats.skipped + ' failed=' + this.stats.failed + ' deadLettered=' + this.stats.deadLettered + ' queue-depth-after=' + (depthAfter.ok ? depthAfter.value : '?') + ' snapshot=' + JSON.stringify(snapAfter));
+    console.log('[drain:end] dequeued=' + dequeued + ' succeeded=' + this.stats.succeeded + ' skipped=' + this.stats.skipped + ' failed=' + this.stats.failed + ' deadLettered=' + this.stats.deadLettered + ' queue-depth-after=' + (depthAfter.ok ? depthAfter.value : '?'));
   }
 
   /**
