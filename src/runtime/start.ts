@@ -32,6 +32,7 @@ function registerShutdown(container: RuntimeContainer): void {
     console.log(`[runtime] shutdown started (${signal})`);
 
     try {
+      await container.services.shutdown();
       await container.storage.client.end();
     } catch {
       // Best-effort

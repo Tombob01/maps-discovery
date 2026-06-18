@@ -48,6 +48,13 @@ export interface AssembledServices {
   readonly geoResolver: IGeoResolver;
   readonly resolvedQueryFactory: ResolvedQueryFactory;
   readonly runtimeFacade: RuntimeFacade;
+  /**
+   * Releases any resources held by constructed services. A no-op for
+   * implementations with nothing to release (e.g. InMemoryQueue); calls
+   * close() on the normalization queue if it exposes one (e.g. a future
+   * Redis/BullMQ-backed implementation).
+   */
+  readonly shutdown: () => Promise<void>;
 }
 
 export function createServices(
@@ -130,12 +137,27 @@ export function createServices(
     resolvedQueryFactory,
   );
 
+  const shutdown = async (): Promise<void> => {
+    if (hasClose(normalizationQueue)) {
+      await normalizationQueue.close();
+    }
+  };
+
   return {
     lifecycle, rawResultStore, normalizationQueue, coordinator,
     runService, createDiscoveryRunner, runtimeExecutor,
     expansionService, queryEngine, geoResolver, resolvedQueryFactory,
-    runtimeFacade,
+    runtimeFacade, shutdown,
   };
+}
+
+function hasClose(q: unknown): q is { close: () => Promise<void> } {
+  return (
+    typeof q === "object" &&
+    q !== null &&
+    "close" in q &&
+    typeof (q as { close?: unknown }).close === "function"
+  );
 }
 
 

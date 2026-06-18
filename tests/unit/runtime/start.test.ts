@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mockClientEnd = vi.fn().mockResolvedValue(undefined);
+const mockShutdown = vi.fn().mockResolvedValue(undefined);
 const mockContainer = {
   storage: { client: { end: mockClientEnd } },
-  services: {},
+  services: { shutdown: mockShutdown },
 };
 
 vi.mock("../../../src/runtime/bootstrap.js", () => ({
