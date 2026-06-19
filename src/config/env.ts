@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @module config/env
  *
  * Typed, validated runtime configuration loaded from environment variables.
@@ -90,6 +90,7 @@ const EnvSchema = zObject({
   BULLMQ_DISCOVERY_CONCURRENCY: positiveInt.default(1),
   BULLMQ_STALL_INTERVAL_MS: positiveInt.default(30_000),
   BULLMQ_MAX_RETRIES: positiveInt.default(5),
+  QUEUE_BACKEND: zEnum(["memory", "bullmq"] as const).default("memory"),
 
   // â”€â”€ Query engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   QUERY_ENGINE_NICHE_DICTS_DIR: nonEmptyString.default(
@@ -178,6 +179,8 @@ export interface AppConfig {
     readonly commandTimeoutMs: number;
     readonly maxRetries: number;
   };
+
+  readonly queueBackend: "memory" | "bullmq";
 
   readonly bullmq: {
     readonly discovery: {
@@ -273,6 +276,8 @@ function buildConfig(parsed: ParsedEnv): AppConfig {
       commandTimeoutMs: parsed.REDIS_COMMAND_TIMEOUT_MS,
       maxRetries: parsed.REDIS_MAX_RETRIES,
     },
+
+    queueBackend: parsed.QUEUE_BACKEND,
 
     bullmq: {
       discovery: {

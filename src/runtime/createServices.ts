@@ -6,6 +6,8 @@ import { RunLifecycleService } from "../storage/RunLifecycleService.js";
 import type { IRawResultStore } from "../storage/IRawResultStore.js";
 import { RunCoordinator } from "../pipeline/RunCoordinator.js";
 import { InMemoryQueue } from "../queue/InMemoryQueue.js";
+import { BullMQQueue } from "../queue/BullMQQueue.js";
+import type { BullMQQueueConnection, BullMQQueueOptions } from "../queue/BullMQQueue.js";
 import { RunService } from "../api/RunService.js";
 import { JsonLinesExporter } from "../exporters/JsonLinesExporter.js";
 import { CsvExporter } from "../exporters/CsvExporter.js";
@@ -34,6 +36,12 @@ import type { AssembledStorage } from "./createStorage.js";
 import type { IKeywordExpansionProvider } from "../ai/IKeywordExpansionProvider.js";
 import type { QueryEngine } from "../query-engine/QueryEngine.js";
 import type { IGeoResolver } from "../core/interfaces/IQueryEngine.js";
+
+export interface QueueConfig {
+  readonly backend: "memory" | "bullmq";
+  readonly connection?: BullMQQueueConnection;
+  readonly options?: BullMQQueueOptions;
+}
 
 export interface AssembledServices {
   readonly lifecycle: RunLifecycleService;
@@ -67,11 +75,12 @@ export function createServices(
     staticCoordinates?: Readonly<Record<string, { lat: number; lng: number }>>;
     nominatim?: { enabled: boolean; userAgent: string };
   } = {},
+  queueConfig?: QueueConfig,
 ): AssembledServices {
   const lifecycle = new RunLifecycleService(storage.runStore, storage.recordStore);
   const rawResultStore: IRawResultStore = storage.rawResultStore;
   const normalizationQueue: IQueue<NormalizationJobPayload> =
-    overrides.normalizationQueue ?? new InMemoryQueue<NormalizationJobPayload>("normalization");
+    overrides.normalizationQueue ?? createDefaultNormalizationQueue(queueConfig);
   const normalizer = new BusinessNormalizer([new GoogleMapsProviderMapper()]);
   const coordinator = new RunCoordinator(lifecycle, normalizer, normalizationQueue, {
     fetchRawResult: (id) => rawResultStore.fetch(id),
@@ -149,6 +158,19 @@ export function createServices(
     expansionService, queryEngine, geoResolver, resolvedQueryFactory,
     runtimeFacade, shutdown,
   };
+}
+
+function createDefaultNormalizationQueue(
+  queueConfig?: QueueConfig,
+): IQueue<NormalizationJobPayload> {
+  if (queueConfig?.backend === "bullmq" && queueConfig.connection !== undefined) {
+    return new BullMQQueue<NormalizationJobPayload>(
+      "normalization",
+      queueConfig.connection,
+      queueConfig.options ?? {},
+    );
+  }
+  return new InMemoryQueue<NormalizationJobPayload>("normalization");
 }
 
 function hasClose(q: unknown): q is { close: () => Promise<void> } {

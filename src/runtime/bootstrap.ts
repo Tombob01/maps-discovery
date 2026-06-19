@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @module runtime/bootstrap
  *
  * Composition root -- assembles the full runtime container.
@@ -12,7 +12,7 @@ import { env } from "../config/env.js";
 import { createStorage } from "./createStorage.js";
 import { createServices } from "./createServices.js";
 import type { AssembledStorage } from "./createStorage.js";
-import type { AssembledServices } from "./createServices.js";
+import type { AssembledServices, QueueConfig } from "./createServices.js";
 import type { RuntimeFacade } from "./RuntimeFacade.js";
 
 // ---------------------------------------------------------------------------
@@ -37,12 +37,33 @@ export interface RuntimeContainer {
 export function bootstrap(): RuntimeContainer {
   const storage = createStorage(env);
   const apiKey = env.ai.groq.apiKey;
-  const services = createServices(storage, {
-    ...(apiKey !== undefined ? { groqApiKey: apiKey } : {}),
-    nominatim: {
-      enabled: env.geocoding.nominatim.enabled,
-      userAgent: env.geocoding.nominatim.userAgent,
+  const queueConfig: QueueConfig =
+    env.queueBackend === "bullmq"
+      ? {
+          backend: "bullmq" as const,
+          connection: {
+            host: env.redis.host,
+            port: env.redis.port,
+            password: env.redis.password,
+            db: env.redis.db,
+          },
+          options: {
+            defaultMaxAttempts: env.bullmq.maxRetries,
+            stallIntervalMs: env.bullmq.stallIntervalMs,
+          },
+        }
+      : { backend: "memory" as const };
+
+  const services = createServices(
+    storage,
+    {
+      ...(apiKey !== undefined ? { groqApiKey: apiKey } : {}),
+      nominatim: {
+        enabled: env.geocoding.nominatim.enabled,
+        userAgent: env.geocoding.nominatim.userAgent,
+      },
     },
-  });
+    queueConfig,
+  );
   return { storage, services, runtimeFacade: services.runtimeFacade };
 }

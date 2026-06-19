@@ -4,10 +4,10 @@
  * BullMQ-backed IQueue<T> implementation using BullMQ's manual-processing
  * mode (Worker constructed with no processor function).
  *
- * NOT wired into production. Phase 1 of the Risk 2 / queue durability
- * migration: an isolated, independently-testable implementation of the
- * existing IQueue<T> contract. createServices.ts still defaults to
- * InMemoryQueue unconditionally; nothing in this file changes that.
+ * Activatable in production behind QUEUE_BACKEND=bullmq (see env.ts).
+ * createServices.ts constructs this instead of InMemoryQueue when
+ * bootstrap.ts passes a queueConfig with backend: "bullmq"; the default
+ * remains InMemoryQueue (QUEUE_BACKEND defaults to "memory").
  *
  * Manual-processing mode, confirmed via direct runtime spike against a
  * real Redis-compatible instance (see project history for spike scripts,
@@ -68,6 +68,7 @@ export interface BullMQQueueConnection {
 export interface BullMQQueueOptions {
   readonly defaultMaxAttempts?: number;
   readonly lockDuration?: number;
+  readonly stallIntervalMs?: number;
 }
 
 export class BullMQQueue<T> implements IQueue<T> {
@@ -90,6 +91,9 @@ export class BullMQQueue<T> implements IQueue<T> {
     const workerOpts: Record<string, unknown> = { connection };
     if (options.lockDuration !== undefined) {
       workerOpts["lockDuration"] = options.lockDuration;
+    }
+    if (options.stallIntervalMs !== undefined) {
+      workerOpts["stalledInterval"] = options.stallIntervalMs;
     }
     this.worker = new Worker<T>(name, undefined, workerOpts as never);
   }
