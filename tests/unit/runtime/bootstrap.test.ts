@@ -22,10 +22,12 @@ vi.mock("bullmq", () => ({
     add: mockQueueAdd,
     getJobCounts: mockQueueGetJobCounts,
     close: mockQueueClose,
+    on: vi.fn(),
   })),
   Worker: vi.fn().mockImplementation(() => ({
     getNextJob: mockWorkerGetNextJob,
     close: mockWorkerClose,
+    on: vi.fn(),
   })),
 }));
 

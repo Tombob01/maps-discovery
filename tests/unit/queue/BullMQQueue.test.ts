@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { EventEmitter } from "node:events";
 import { isOk, isErr } from "../../../src/core/types/common.js";
 
 const mockQueueAdd = vi.fn();
@@ -19,17 +20,26 @@ const mockQueueClose = vi.fn();
 const mockWorkerGetNextJob = vi.fn();
 const mockWorkerClose = vi.fn();
 
+const createdQueues: EventEmitter[] = [];
+const createdWorkers: EventEmitter[] = [];
+
 vi.mock("bullmq", () => {
   return {
-    Queue: vi.fn().mockImplementation(() => ({
-      add: mockQueueAdd,
-      getJobCounts: mockQueueGetJobCounts,
-      close: mockQueueClose,
-    })),
-    Worker: vi.fn().mockImplementation(() => ({
-      getNextJob: mockWorkerGetNextJob,
-      close: mockWorkerClose,
-    })),
+    Queue: vi.fn().mockImplementation(() => {
+      const q = new EventEmitter() as EventEmitter & Record<string, unknown>;
+      q["add"] = mockQueueAdd;
+      q["getJobCounts"] = mockQueueGetJobCounts;
+      q["close"] = mockQueueClose;
+      createdQueues.push(q);
+      return q;
+    }),
+    Worker: vi.fn().mockImplementation(() => {
+      const w = new EventEmitter() as EventEmitter & Record<string, unknown>;
+      w["getNextJob"] = mockWorkerGetNextJob;
+      w["close"] = mockWorkerClose;
+      createdWorkers.push(w);
+      return w;
+    }),
   };
 });
 
@@ -69,6 +79,8 @@ function makeQueue() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  createdQueues.length = 0;
+  createdWorkers.length = 0;
 });
 
 describe("BullMQQueue — enqueue()", () => {
@@ -327,5 +339,34 @@ describe("BullMQQueue — depth()", () => {
     const r = await q.depth();
     expect(isErr(r)).toBe(true);
     if (isErr(r)) expect(r.error.message).toContain("redis timeout");
+  });
+});
+describe("BullMQQueue � error event handling", () => {
+  it("attaches an 'error' listener to the Queue instance during construction", () => {
+    makeQueue();
+    const q = createdQueues[createdQueues.length - 1]!;
+    expect(q.listenerCount("error")).toBeGreaterThan(0);
+  });
+
+  it("attaches an 'error' listener to the Worker instance during construction", () => {
+    makeQueue();
+    const w = createdWorkers[createdWorkers.length - 1]!;
+    expect(w.listenerCount("error")).toBeGreaterThan(0);
+  });
+
+  it("emitting 'error' on the Queue instance does not throw through the test process", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    makeQueue();
+    const q = createdQueues[createdQueues.length - 1]!;
+    expect(() => q.emit("error", new Error("redis connection lost"))).not.toThrow();
+    errorSpy.mockRestore();
+  });
+
+  it("emitting 'error' on the Worker instance does not throw through the test process", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    makeQueue();
+    const w = createdWorkers[createdWorkers.length - 1]!;
+    expect(() => w.emit("error", new Error("stalled job"))).not.toThrow();
+    errorSpy.mockRestore();
   });
 });

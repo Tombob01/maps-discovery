@@ -96,6 +96,28 @@ export class BullMQQueue<T> implements IQueue<T> {
       workerOpts["stalledInterval"] = options.stallIntervalMs;
     }
     this.worker = new Worker<T>(name, undefined, workerOpts as never);
+
+    // BullMQ's Queue and Worker both extend Node's EventEmitter and emit an
+    // 'error' event for faults that surface outside any awaited call (e.g.
+    // certain ioredis connection/reconnection failures) -- these are NOT
+    // caught by the try/catch blocks in enqueue()/dequeue()/ack()/nack()/
+    // depth() below, since those only catch rejections from awaited method
+    // calls, not EventEmitter 'error' events. Listeners here only log -- no
+    // process-level uncaughtException/unhandledRejection handling is added,
+    // and the existing Result-returning behavior of every public method is
+    // unchanged.
+    this.queue.on("error", (e: Error) => {
+      console.error(
+        `[bullmq:error] source=queue queue="${this.name}" message=${e.message}`,
+        e,
+      );
+    });
+    this.worker.on("error", (e: Error) => {
+      console.error(
+        `[bullmq:error] source=worker queue="${this.name}" message=${e.message}`,
+        e,
+      );
+    });
   }
 
   async enqueue(
