@@ -64,6 +64,7 @@ describe("start()", () => {
     await Promise.race([start(), Promise.resolve()]);
     expect(capturedHandler).not.toBeNull();
     await expect((capturedHandler as () => Promise<void>)()).rejects.toThrow("process.exit(0)");
+    expect(mockShutdown).toHaveBeenCalledOnce();
     expect(mockClientEnd).toHaveBeenCalledOnce();
   });
 
@@ -78,6 +79,7 @@ describe("start()", () => {
     processExitSpy.mockClear();
     await (capturedHandler as () => Promise<void>)();
     expect(processExitSpy).not.toHaveBeenCalled();
+    expect(mockShutdown).toHaveBeenCalledOnce();
     expect(mockClientEnd).toHaveBeenCalledOnce();
   });
 

@@ -295,8 +295,14 @@ describe("DiscoveryRunner", () => {
     // Coordinator drains queue, normalizes, persists
     const runStats = await services.coordinator.execute(runId);
 
-    expect(runStats.recordsNormalized).toBeGreaterThanOrEqual(1);
-    expect(runStats.rawResultsFound).toBeGreaterThanOrEqual(1);
+        expect(runStats.recordsNormalized).toBe(2);
+    expect(runStats.rawResultsFound).toBe(2);
+    expect(runStats.recordsUnique).toBe(2);
+    expect(runStats.errors).toBe(0);
+
+    const persisted = await recordStore.getByRunId(runId);
+    expect(persisted).toHaveLength(2);
+    expect(persisted.map((r) => r.name).sort()).toEqual(["Business 1", "Business 2"]);
 
     const finalRun = await runStore.getById(runId);
     expect(finalRun?.status).toBe("complete");
