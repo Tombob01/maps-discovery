@@ -97,13 +97,12 @@ function executeRequest(
   runId: string,
   body: unknown,
 ): Promise<Response> {
-  return app.fetch(
+  return Promise.resolve(app.fetch(
     new Request(`http://localhost/api/runs/${runId}/execute`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }),
-  );
+    })));
 }
 
 // ---------------------------------------------------------------------------

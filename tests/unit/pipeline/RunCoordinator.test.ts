@@ -87,6 +87,9 @@ class StubRecordStore implements IRecordStore {
   async getByRunId(_id: string): Promise<readonly BusinessRecord[]> {
     return this.inserted;
   }
+  async getByRunIdPaginated(_id: string, limit: number, offset: number): Promise<readonly BusinessRecord[]> {
+    return this.inserted.slice(offset, offset + limit);
+  }
   async countByRunId(_id: string): Promise<number> {
     return this.inserted.length;
   }
@@ -404,6 +407,7 @@ describe("RunCoordinator - stats tracking", () => {
       async insert(_r: BusinessRecord): Promise<void> {},
       async insertMany(_rs: readonly BusinessRecord[]): Promise<number> { return 0; },
       async getByRunId(_id: string): Promise<readonly BusinessRecord[]> { return []; },
+      async getByRunIdPaginated(_id: string, _limit: number, _offset: number): Promise<readonly BusinessRecord[]> { return []; },
       async countByRunId(_id: string): Promise<number> { return 0; },
     };
     const lifecycle = new RunLifecycleService(runStore, skippingStore);

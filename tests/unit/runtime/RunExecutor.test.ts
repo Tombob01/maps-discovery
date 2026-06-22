@@ -77,6 +77,9 @@ class InMemoryRecordStore implements IRecordStore {
   async countByRunId(runId: string): Promise<number> {
     return this.inserted.filter((r) => r.runId === runId).length;
   }
+  async getByRunIdPaginated(runId: string, limit: number, offset: number): Promise<readonly BusinessRecord[]> {
+    return this.inserted.filter((r) => r.runId === runId).slice(offset, offset + limit);
+  }
 }
 
 // Minimal RunServiceRunStore double (satisfies RunService constructor)

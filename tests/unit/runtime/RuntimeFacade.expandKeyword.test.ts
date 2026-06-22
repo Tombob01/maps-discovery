@@ -6,6 +6,9 @@ import { RuntimeFacade } from "../../../src/runtime/RuntimeFacade.js";
 import { KeywordExpansionService } from "../../../src/ai/KeywordExpansionService.js";
 import type { RunService } from "../../../src/api/RunService.js";
 import type { RuntimeExecutor } from "../../../src/runtime/RuntimeExecutor.js";
+import type { QueryEngine } from "../../../src/query-engine/QueryEngine.js";
+import type { IGeoResolver } from "../../../src/core/interfaces/IQueryEngine.js";
+import type { ResolvedQueryFactory } from "../../../src/query-engine/ResolvedQueryFactory.js";
 import type { IKeywordExpansionProvider, ExpandedKeyword } from "../../../src/ai/IKeywordExpansionProvider.js";
 
 const SAMPLE_SUGGESTIONS: ExpandedKeyword[] = [
@@ -22,6 +25,9 @@ function makeFacade(suggestions: ExpandedKeyword[]): RuntimeFacade {
     {} as RunService,
     {} as RuntimeExecutor,
     expansionService,
+    {} as QueryEngine,
+    {} as IGeoResolver,
+    {} as ResolvedQueryFactory,
   );
 }
 
@@ -36,7 +42,7 @@ describe("RuntimeFacade.expandKeyword", () => {
   it("passes location and limit to expansion service", async () => {
     const provider: IKeywordExpansionProvider = { expand: vi.fn().mockResolvedValue([]) };
     const service = new KeywordExpansionService(provider);
-    const facade = new RuntimeFacade({} as RunService, {} as RuntimeExecutor, service);
+    const facade = new RuntimeFacade({} as RunService, {} as RuntimeExecutor, service, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
     await facade.expandKeyword({ keyword: "plumber", location: "Lagos", limit: 5 });
     expect(provider.expand).toHaveBeenCalledWith("plumber", { location: "Lagos", limit: 5 });
   });
@@ -52,7 +58,7 @@ describe("RuntimeFacade.expandKeyword", () => {
       expand: vi.fn().mockRejectedValue(new Error("ai down")),
     };
     const service = new KeywordExpansionService(provider);
-    const facade = new RuntimeFacade({} as RunService, {} as RuntimeExecutor, service);
+    const facade = new RuntimeFacade({} as RunService, {} as RuntimeExecutor, service, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
     await expect(facade.expandKeyword({ keyword: "plumber" })).resolves.toBeDefined();
   });
 

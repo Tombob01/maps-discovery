@@ -171,7 +171,7 @@ describe("NominatimGeoResolver -- Priority 3: Nominatim success", () => {
     const fetchFn = makeSuccessFetch("0", "0");
     const resolver = makeResolver(fetchFn as unknown as typeof fetch);
     await resolver.resolve(makeGeoTarget({ displayName: "Test" }));
-    const callArgs = (fetchFn as ReturnType<typeof vi.fn>).mock.calls[0];
+    const callArgs = (fetchFn as ReturnType<typeof vi.fn>).mock.calls[0]!;
     const headers = callArgs[1]?.headers as Record<string, string>;
     expect(headers?.["User-Agent"]).toBe("maps-discovery-test/1.0");
   });
@@ -180,7 +180,7 @@ describe("NominatimGeoResolver -- Priority 3: Nominatim success", () => {
     const fetchFn = makeSuccessFetch("0", "0");
     const resolver = makeResolver(fetchFn as unknown as typeof fetch);
     await resolver.resolve(makeGeoTarget({ displayName: "Denver" }));
-    const url = (fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const url = (fetchFn as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
     expect(url).not.toContain("countrycodes");
   });
 
@@ -188,7 +188,7 @@ describe("NominatimGeoResolver -- Priority 3: Nominatim success", () => {
     const fetchFn = makeSuccessFetch("0", "0");
     const resolver = makeResolver(fetchFn as unknown as typeof fetch);
     await resolver.resolve(makeGeoTarget({ displayName: "Ontario" }));
-    const url = (fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const url = (fetchFn as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
     expect(url).toContain("q=Ontario");
   });
 });

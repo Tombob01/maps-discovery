@@ -20,6 +20,7 @@ import type { BusinessRecord } from "../../../src/core/models/BusinessRecord.js"
 import type {
   IPipelineStage,
   StageContext,
+  StageError,
 } from "../../../src/pipeline/IPipelineStage.js";
 import type {
   Result,
@@ -78,8 +79,8 @@ describe("PipelineRunner — deadLettered stats", () => {
     const queue = new InMemoryQueue<{ task: string }>("dl-test-retry", { defaultMaxAttempts: 3 });
     const stage: IPipelineStage<{ task: string }> = {
       stageName: "normalization",
-      async execute(): Promise<Result<StageResult, { code: string; message: string }>> {
-        return { ok: false, error: { code: "INFRA", message: "fail" } };
+      async execute(): Promise<Result<StageResult, StageError>> {
+        return { ok: false, error: { code: "UNEXPECTED_ERROR", stage: "normalization", message: "fail" } };
       },
     };
     await queue.enqueue({ task: "a" });
@@ -93,8 +94,8 @@ describe("PipelineRunner — deadLettered stats", () => {
     const queue = new InMemoryQueue<{ task: string }>("dl-test-dead", { defaultMaxAttempts: 1 });
     const stage: IPipelineStage<{ task: string }> = {
       stageName: "normalization",
-      async execute(): Promise<Result<StageResult, { code: string; message: string }>> {
-        return { ok: false, error: { code: "INFRA", message: "fail" } };
+      async execute(): Promise<Result<StageResult, StageError>> {
+        return { ok: false, error: { code: "UNEXPECTED_ERROR", stage: "normalization", message: "fail" } };
       },
     };
     await queue.enqueue({ task: "b" });
@@ -112,8 +113,8 @@ describe("PipelineRunner — deadLettered stats", () => {
     const queue = new InMemoryQueue<{ task: string }>("dl-regression", { defaultMaxAttempts: 1 });
     const stage: IPipelineStage<{ task: string }> = {
       stageName: "normalization",
-      async execute(): Promise<Result<StageResult, { code: string; message: string }>> {
-        return { ok: false, error: { code: "INFRA", message: "fail" } };
+      async execute(): Promise<Result<StageResult, StageError>> {
+        return { ok: false, error: { code: "UNEXPECTED_ERROR", stage: "normalization", message: "fail" } };
       },
     };
     await queue.enqueue({ task: "c" });

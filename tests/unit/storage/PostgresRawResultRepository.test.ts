@@ -72,7 +72,7 @@ describe("PostgresRawResultRepository.save", () => {
 
     await repo.save(makeResult("ChIJabc123"));
 
-    const params = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][1] as unknown[];
+    const params = (client.query as ReturnType<typeof vi.fn>).mock.calls[0]![1] as unknown[];
     expect(params).toContain("ChIJabc123");
   });
 
@@ -82,7 +82,7 @@ describe("PostgresRawResultRepository.save", () => {
 
     await repo.save(makeResult("place-1"));
 
-    const params = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][1] as unknown[];
+    const params = (client.query as ReturnType<typeof vi.fn>).mock.calls[0]![1] as unknown[];
     const payloadParam = params.find(
       (p) => typeof p === "string" && p.includes("Test Business"),
     );
@@ -97,7 +97,7 @@ describe("PostgresRawResultRepository.save", () => {
 
     await repo.save(makeResult("place-2"));
 
-    const params = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][1] as unknown[];
+    const params = (client.query as ReturnType<typeof vi.fn>).mock.calls[0]![1] as unknown[];
     const tokenParam = params.find(
       (p) => typeof p === "string" && p.includes("offset"),
     );
@@ -117,7 +117,7 @@ describe("PostgresRawResultRepository.save", () => {
 
     await repo.save(result);
 
-    const params = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][1] as unknown[];
+    const params = (client.query as ReturnType<typeof vi.fn>).mock.calls[0]![1] as unknown[];
     expect(params).toContain(null);
   });
 
@@ -135,7 +135,7 @@ describe("PostgresRawResultRepository.save", () => {
     const client = makeClient();
     const repo = new PostgresRawResultRepository(client);
     await repo.save(makeResult("place-5"));
-    const params = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][1] as unknown[];
+    const params = (client.query as ReturnType<typeof vi.fn>).mock.calls[0]![1] as unknown[];
     // query_id is always null until the queries table write path is implemented
     expect(params[1]).toBeNull();
   });
@@ -161,7 +161,7 @@ describe("PostgresRawResultRepository.fetch", () => {
 
     await repo.fetch("target-place-id");
 
-    const params = (client.query as ReturnType<typeof vi.fn>).mock.calls[0][1] as unknown[];
+    const params = (client.query as ReturnType<typeof vi.fn>).mock.calls[0]![1] as unknown[];
     expect(params[0]).toBe("target-place-id");
   });
 

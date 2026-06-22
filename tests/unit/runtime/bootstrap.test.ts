@@ -40,6 +40,7 @@ import type { AppConfig } from "../../../src/config/env.js";
 import { InMemoryQueue } from "../../../src/queue/InMemoryQueue.js";
 import { BullMQQueue } from "../../../src/queue/BullMQQueue.js";
 import type { QueueConfig } from "../../../src/runtime/createServices.js";
+import type { NormalizationJobPayload } from "../../../src/core/models/Job.js";
 
 // ---------------------------------------------------------------------------
 // Fixture config (same as createStorage tests)
@@ -86,7 +87,10 @@ const TEST_CONFIG: AppConfig = {
     timezoneId: "UTC",
   },
   logging: { level: "silent", format: "json", stackTraces: false },
-  export: { outputDir: "./data/exports" },
+  queueBackend: "memory" as const,
+  ai: { groq: { apiKey: undefined } },
+  geocoding: { nominatim: { enabled: false, userAgent: "test" } },
+  watchdog: { maxRunAgeMs: 300_000, scanIntervalMs: 60_000 },
 };
 
 // ---------------------------------------------------------------------------
@@ -200,7 +204,7 @@ describe("createServices() -- queue backend selection", () => {
 
   it("overrides.normalizationQueue takes precedence over queueConfig", () => {
     const storage = createStorage(TEST_CONFIG);
-    const customQueue = new InMemoryQueue("custom");
+    const customQueue = new InMemoryQueue<NormalizationJobPayload>("custom");
     const queueConfig: QueueConfig = {
       backend: "bullmq",
       connection: { host: "localhost", port: 6379 },

@@ -52,6 +52,15 @@ class StubRunStore implements IRunStore {
     return Array.from(this.store.values());
   }
 
+  async listStaleRunning(olderThan: Date): Promise<readonly Run[]> {
+    return Array.from(this.store.values()).filter(
+      (r) =>
+        r.status === "running" &&
+        r.startedAt !== null &&
+        r.startedAt.getTime() < olderThan.getTime(),
+    );
+  }
+
   async update(run: Run): Promise<void> {
     this.store.set(run.id, run);
     this.updateCalls.push(run);
@@ -80,6 +89,9 @@ class StubRecordStore implements IRecordStore {
 
   async getByRunId(_runId: string): Promise<readonly BusinessRecord[]> {
     return this.insertedBatches.flat();
+  }
+  async getByRunIdPaginated(_runId: string, limit: number, offset: number): Promise<readonly BusinessRecord[]> {
+    return this.insertedBatches.flat().slice(offset, offset + limit);
   }
 
   async countByRunId(_runId: string): Promise<number> {
@@ -419,6 +431,7 @@ describe("RunLifecycleService — persistRecords()", () => {
       async insert(_r: BusinessRecord): Promise<void> {},
       async insertMany(_rs: readonly BusinessRecord[]): Promise<number> { return 0; },
       async getByRunId(_id: string): Promise<readonly BusinessRecord[]> { return []; },
+      async getByRunIdPaginated(_id: string, _limit: number, _offset: number): Promise<readonly BusinessRecord[]> { return []; },
       async countByRunId(_id: string): Promise<number> { return 0; },
     };
     const svc = new RunLifecycleService(new StubRunStore(), skippingStore);

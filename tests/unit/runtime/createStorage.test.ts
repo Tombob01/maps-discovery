@@ -78,9 +78,10 @@ function makeConfig(overrides: Partial<AppConfig["pg"]> = {}): AppConfig {
       format: "json",
       stackTraces: false,
     },
-    export: {
-      outputDir: "./data/exports",
-    },
+    queueBackend: "memory" as const,
+    ai: { groq: { apiKey: undefined } },
+    geocoding: { nominatim: { enabled: false, userAgent: "test" } },
+    watchdog: { maxRunAgeMs: 300_000, scanIntervalMs: 60_000 },
   };
 }
 

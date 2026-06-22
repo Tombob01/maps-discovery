@@ -12,8 +12,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { reducer } from "../../../src/ui/hooks/useDiscoveryFlow";
-import type { DiscoveryFlowState } from "../../../src/ui/types/ui";
+import { reducer } from "../../../src/ui/hooks/useDiscoveryFlow.js";
+import type { DiscoveryFlowState } from "../../../src/ui/types/ui.js";
 
 function makeState(overrides: Partial<DiscoveryFlowState> = {}): DiscoveryFlowState {
   return {

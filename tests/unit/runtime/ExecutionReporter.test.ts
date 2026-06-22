@@ -61,6 +61,7 @@ function makeResolvedQuery(runId: RunID = TEST_RUN_ID): ResolvedQuery {
       displayName: "Lagos",
       country: "Nigeria",
       coordinates: { lat: 6.5244, lng: 3.3792 },
+      resolvedCoordinates: { lat: 6.5244, lng: 3.3792 },
     },
   };
 }

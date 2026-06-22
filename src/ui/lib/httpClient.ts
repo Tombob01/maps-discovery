@@ -19,7 +19,7 @@ import type {
   ExportFormat,
   ExpandedSuggestion,
   ExpansionStrategy,
-} from '../types/ui';
+} from '../types/ui.js';
 
 // ---------------------------------------------------------------------------
 // Config

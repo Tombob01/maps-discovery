@@ -15,8 +15,8 @@ import { bootstrap } from "../../../src/runtime/bootstrap.js";
 import { start } from "../../../src/runtime/start.js";
 
 describe("start()", () => {
-  let processOnSpy: ReturnType<typeof vi.spyOn>;
-  let processExitSpy: ReturnType<typeof vi.spyOn>;
+  let processOnSpy: ReturnType<typeof vi.spyOn<any, any>>;
+  let processExitSpy: ReturnType<typeof vi.spyOn<any, any>>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -57,27 +57,27 @@ describe("start()", () => {
 
   it("shutdown handler calls storage.client.end() and exits 0", async () => {
     let capturedHandler: ((...args: unknown[]) => void) | null = null;
-    processOnSpy.mockImplementation((event: string | symbol, handler: (...args: unknown[]) => void) => {
+    processOnSpy.mockImplementation((event: any, handler: any) => {
       if (event === "SIGINT") capturedHandler = handler;
       return process;
     });
     await Promise.race([start(), Promise.resolve()]);
     expect(capturedHandler).not.toBeNull();
-    await expect((capturedHandler as () => Promise<void>)()).rejects.toThrow("process.exit(0)");
+    await expect((capturedHandler as unknown as () => Promise<void>)()).rejects.toThrow("process.exit(0)");
     expect(mockShutdown).toHaveBeenCalledOnce();
     expect(mockClientEnd).toHaveBeenCalledOnce();
   });
 
   it("does not run shutdown twice", async () => {
     let capturedHandler: ((...args: unknown[]) => void) | null = null;
-    processOnSpy.mockImplementation((event: string | symbol, handler: (...args: unknown[]) => void) => {
+    processOnSpy.mockImplementation((event: any, handler: any) => {
       if (event === "SIGINT") capturedHandler = handler;
       return process;
     });
     await Promise.race([start(), Promise.resolve()]);
-    await expect((capturedHandler as () => Promise<void>)()).rejects.toThrow("process.exit(0)");
+    await expect((capturedHandler as unknown as () => Promise<void>)()).rejects.toThrow("process.exit(0)");
     processExitSpy.mockClear();
-    await (capturedHandler as () => Promise<void>)();
+    await (capturedHandler as unknown as () => Promise<void>)();
     expect(processExitSpy).not.toHaveBeenCalled();
     expect(mockShutdown).toHaveBeenCalledOnce();
     expect(mockClientEnd).toHaveBeenCalledOnce();

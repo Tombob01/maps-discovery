@@ -13,7 +13,7 @@ import {
   getExtractionHeading,
   getProgressBarColorClass,
   shouldAnimateProgressBar,
-} from "../../../src/ui/components/RunProgressRow";
+} from "../../../src/ui/components/RunProgressRow.js";
 
 describe("getStatusDisplay", () => {
   it("returns the stalled config for running + isPollingStalled=true", () => {

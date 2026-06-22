@@ -62,7 +62,7 @@ describe("httpClient.executeRun() — fire-and-forget", () => {
 
     await httpClient.executeRun(EXECUTE_PARAMS);
 
-    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!;
     const body = JSON.parse((call[1] as RequestInit).body as string);
     expect(body.seeds).toEqual([{ keyword: "plumbers Lagos", location: "Lagos Nigeria", strategy: "commercial" }]);
   });
@@ -73,7 +73,7 @@ describe("httpClient.executeRun() — fire-and-forget", () => {
 
     await httpClient.executeRun({ ...EXECUTE_PARAMS, keywords: [] });
 
-    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!;
     const body = JSON.parse((call[1] as RequestInit).body as string);
     expect(body.seeds).toEqual([{ keyword: "plumbers", location: "Lagos Nigeria" }]);
   });
@@ -100,7 +100,7 @@ describe("httpClient.executeRun() — fire-and-forget", () => {
 
     // setTimeout should not be called for timeout purposes
     // (it may be called 0 times or by other infra — we check fetch had no signal)
-    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!;
     const init = call[1] as RequestInit;
     expect(init.signal).toBeUndefined();
     setTimeoutSpy.mockRestore();

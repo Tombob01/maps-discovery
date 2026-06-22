@@ -1,5 +1,5 @@
 import React from 'react';
-import type { RunStatus, RunStats } from '../types/ui';
+import type { RunStatus, RunStats } from '../types/ui.js';
 
 interface Props {
   runId: string | null;
@@ -54,7 +54,7 @@ export function getStatusDisplay(
   if (runStatus === 'running' && isPollingStalled) {
     return STALLED_CONFIG;
   }
-  return STATUS_CONFIG[runStatus];
+  return STATUS_CONFIG[runStatus]!;
 }
 
 export function getExtractionHeading(

@@ -79,6 +79,7 @@ function makeResolvedQuery(runId: RunID = TEST_RUN_ID): ResolvedQuery {
       displayName: "Lagos",
       country: "Nigeria",
       coordinates: { lat: 6.5244, lng: 3.3792 },
+      resolvedCoordinates: { lat: 6.5244, lng: 3.3792 },
     },
   };
 }
@@ -147,6 +148,9 @@ class InMemoryRecordStore implements IRecordStore {
   }
   async countByRunId(runId: string): Promise<number> {
     return this.inserted.filter((r) => r.runId === runId).length;
+  }
+  async getByRunIdPaginated(runId: string, limit: number, offset: number): Promise<readonly BusinessRecord[]> {
+    return this.inserted.filter((r) => r.runId === runId).slice(offset, offset + limit);
   }
 }
 

@@ -85,13 +85,12 @@ function request(
   body?: unknown,
 ): Promise<Response> {
   const url = `http://localhost${path}`;
-  return app.fetch(
+  return Promise.resolve(app.fetch(
     new Request(url, {
       method,
       headers: body ? { "Content-Type": "application/json" } : {},
-      body: body ? JSON.stringify(body) : undefined,
-    }),
-  );
+      body: body ? JSON.stringify(body) : null,
+    })));
 }
 
 // ---------------------------------------------------------------------------
@@ -298,7 +297,7 @@ describe("POST /api/runs/:id/execute", () => {
   });
 });
 
-describe("GET /api/runs/:id — currentSeed", () => {
+describe("GET /api/runs/:id ï¿½ currentSeed", () => {
   it("returns null for currentSeed when no run is executing", async () => {
     const facade = makeMockFacade();
     const app = createServer(facade);
@@ -343,7 +342,7 @@ describe("GET /api/runs/:id — currentSeed", () => {
   });
 });
 
-describe("POST /api/runs/:id/execute — seed failure isolation", () => {
+describe("POST /api/runs/:id/execute ï¿½ seed failure isolation", () => {
   it("continues to seed #3 when seed #2 throws", async () => {
     const facade = makeMockFacade();
     const executionOrder: string[] = [];
@@ -390,7 +389,7 @@ describe("POST /api/runs/:id/execute ï¿½ concurrency guard", () => {
     // Make executeFromSeed hang so the first request never completes
     let resolveFirst: () => void;
     (facade.executeFromSeed as ReturnType<typeof vi.fn>).mockImplementationOnce(
-      () => new Promise<typeof import("../../../src/runtime/RuntimeExecutor.js").ExecutionSummary>(
+      () => new Promise<import("../../../src/runtime/RuntimeExecutor.js").ExecutionSummary>(
         (resolve) => { resolveFirst = () => resolve({ discovery: { resultsSaved: 0, jobsEnqueued: 0, resultsCollected: 0, errors: 0 }, normalization: { queriesGenerated: 0, queriesDispatched: 0, rawResultsFound: 0, recordsNormalized: 0, recordsUnique: 0, recordsDuplicate: 0, recordsExported: 0, errors: 0 } }); }
       )
     );

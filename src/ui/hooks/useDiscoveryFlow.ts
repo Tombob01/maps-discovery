@@ -12,7 +12,7 @@ import type {
   ExportFormat,
   ExpandedSuggestion,
   ExpansionStrategy,
-} from '../types/ui';
+} from '../types/ui.js';
 
 // --- State shape & reducer ---------------------------------------------------
 
@@ -171,7 +171,7 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
 
     function stopPolling() { clearInterval(intervalId); }
 
-    function onComplete(run: import('../types/ui').Run) {
+    function onComplete(run: import('../types/ui.js').Run) {
       stopPolling();
       // [MVP-3] Backend confirmed completion -- clear the persisted key.
       try { localStorage.removeItem(ACTIVE_RUN_KEY); } catch { /* ignore */ }
@@ -192,7 +192,7 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
       });
     }
 
-    function onFailed(run: import('../types/ui').Run) {
+    function onFailed(run: import('../types/ui.js').Run) {
       stopPolling();
       // [MVP-3] Backend confirmed failure -- clear the persisted key.
       try { localStorage.removeItem(ACTIVE_RUN_KEY); } catch { /* ignore */ }

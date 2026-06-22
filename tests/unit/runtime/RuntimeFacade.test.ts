@@ -29,6 +29,10 @@ import type { ResolvedQuery } from "../../../src/core/models/Query.js";
 import type { RunID, QueryID } from "../../../src/core/types/common.js";
 import type { RunStats, Run } from "../../../src/core/models/Job.js";
 import type { ScrapingPolicy } from "../../../src/core/types/rate-limit.js";
+import type { KeywordExpansionService } from "../../../src/ai/KeywordExpansionService.js";
+import type { QueryEngine } from "../../../src/query-engine/QueryEngine.js";
+import type { IGeoResolver } from "../../../src/core/interfaces/IQueryEngine.js";
+import type { ResolvedQueryFactory } from "../../../src/query-engine/ResolvedQueryFactory.js";
 import type { ResumeToken } from "../../../src/core/types/pagination.js";
 import type { IRunStore } from "../../../src/storage/IRunStore.js";
 import type { IRecordStore } from "../../../src/storage/IRecordStore.js";
@@ -85,6 +89,7 @@ function makeResolvedQuery(runId: RunID = TEST_RUN_ID): ResolvedQuery {
       displayName: "Lagos",
       country: "Nigeria",
       coordinates: { lat: 6.5244, lng: 3.3792 },
+      resolvedCoordinates: { lat: 6.5244, lng: 3.3792 },
     },
   };
 }
@@ -131,7 +136,7 @@ function makeMockExecutor(result: ExecutionSummary | Error = STUB_SUMMARY): Runt
 describe("RuntimeFacade (unit)", () => {
   it("createRun delegates to runService and returns runId + status", async () => {
     const runService = makeMockRunService();
-    const facade = new RuntimeFacade(runService, makeMockExecutor());
+    const facade = new RuntimeFacade(runService, makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
 
     const result = await facade.createRun({ niche: "plumbers", location: "Lagos" });
 
@@ -144,14 +149,14 @@ describe("RuntimeFacade (unit)", () => {
     const runService = makeMockRunService({
       createRun: vi.fn().mockResolvedValue({ ok: false, error: { code: "VALIDATION_ERROR", message: "niche is required" } }),
     });
-    const facade = new RuntimeFacade(runService, makeMockExecutor());
+    const facade = new RuntimeFacade(runService, makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
 
     await expect(facade.createRun({ niche: "", location: "Lagos" })).rejects.toThrow("niche is required");
   });
 
   it("executeRun delegates to runtimeExecutor and returns summary unchanged", async () => {
     const executor = makeMockExecutor(STUB_SUMMARY);
-    const facade = new RuntimeFacade(makeMockRunService(), executor);
+    const facade = new RuntimeFacade(makeMockRunService(), executor, {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
     const opts = { provider: makeMockProvider(), runId: TEST_RUN_ID, query: makeResolvedQuery() };
 
     const summary = await facade.executeRun(opts);
@@ -161,7 +166,7 @@ describe("RuntimeFacade (unit)", () => {
   });
 
   it("executeRun propagates executor errors", async () => {
-    const facade = new RuntimeFacade(makeMockRunService(), makeMockExecutor(new Error("exec failed")));
+    const facade = new RuntimeFacade(makeMockRunService(), makeMockExecutor(new Error("exec failed")), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
 
     await expect(
       facade.executeRun({ provider: makeMockProvider(), runId: TEST_RUN_ID, query: makeResolvedQuery() }),
@@ -169,7 +174,7 @@ describe("RuntimeFacade (unit)", () => {
   });
 
   it("getRun returns RunView when found", async () => {
-    const facade = new RuntimeFacade(makeMockRunService(), makeMockExecutor());
+    const facade = new RuntimeFacade(makeMockRunService(), makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
     const run = await facade.getRun(TEST_RUN_ID);
     expect(run).not.toBeNull();
     expect(run?.id).toBe(TEST_RUN_ID);
@@ -180,13 +185,13 @@ describe("RuntimeFacade (unit)", () => {
     const runService = makeMockRunService({
       getRun: vi.fn().mockResolvedValue({ ok: false, error: { code: "NOT_FOUND", message: "not found" } }),
     });
-    const facade = new RuntimeFacade(runService, makeMockExecutor());
+    const facade = new RuntimeFacade(runService, makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
     const run = await facade.getRun("nonexistent");
     expect(run).toBeNull();
   });
 
   it("listRecords delegates and returns RecordPage", async () => {
-    const facade = new RuntimeFacade(makeMockRunService(), makeMockExecutor());
+    const facade = new RuntimeFacade(makeMockRunService(), makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
     const page = await facade.listRecords(TEST_RUN_ID, 1, 20);
     expect(page.items).toEqual([]);
     expect(page.total).toBe(0);
@@ -196,7 +201,7 @@ describe("RuntimeFacade (unit)", () => {
 
   it("facade holds no state between calls", async () => {
     const runService = makeMockRunService();
-    const facade = new RuntimeFacade(runService, makeMockExecutor());
+    const facade = new RuntimeFacade(runService, makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
 
     await facade.createRun({ niche: "plumbers", location: "Lagos" });
     await facade.createRun({ niche: "electricians", location: "Abuja" });
@@ -232,6 +237,9 @@ class InMemoryRecordStore implements IRecordStore {
   }
   async countByRunId(runId: string): Promise<number> {
     return this.inserted.filter((r) => r.runId === runId).length;
+  }
+  async getByRunIdPaginated(runId: string, limit: number, offset: number): Promise<readonly BusinessRecord[]> {
+    return this.inserted.filter((r) => r.runId === runId).slice(offset, offset + limit);
   }
 }
 

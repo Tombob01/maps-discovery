@@ -136,7 +136,7 @@ describe("RuntimeFacade.executeFromSeed", () => {
     });
 
     expect(executor.execute).toHaveBeenCalledOnce();
-    const callArg = vi.mocked(executor.execute).mock.calls[0][0];
+    const callArg = vi.mocked(executor.execute).mock.calls[0]![0];
     expect(callArg.runId).toBe(TEST_RUN_ID);
     expect(callArg.provider).toBe(provider);
     expect(callArg.query).toBeDefined();
@@ -163,7 +163,7 @@ describe("RuntimeFacade.executeFromSeed", () => {
       location: "Lagos, Nigeria",
     });
 
-    const callArg = vi.mocked(executor.execute).mock.calls[0][0];
+    const callArg = vi.mocked(executor.execute).mock.calls[0]![0];
     expect(callArg.query.rawText.toLowerCase()).toContain("plumbers");
     expect(callArg.query.rawText.toLowerCase()).toContain("lagos");
   });
@@ -260,7 +260,7 @@ describe("RuntimeFacade.executeFromSeed", () => {
     });
 
     expect(executor.execute).toHaveBeenCalledOnce();
-    const callArg = vi.mocked(executor.execute).mock.calls[0][0];
+    const callArg = vi.mocked(executor.execute).mock.calls[0]![0];
     const coords = callArg.query.resolvedGeoTarget.resolvedCoordinates;
     expect(coords.lat).not.toBe(0);
     expect(coords.lng).not.toBe(0);
@@ -287,7 +287,7 @@ describe("RuntimeFacade.executeFromSeed", () => {
       location: "Austin, TX",
     });
 
-    const callArg = vi.mocked(executor.execute).mock.calls[0][0];
+    const callArg = vi.mocked(executor.execute).mock.calls[0]![0];
     expect(callArg.runId).toBe(specificRunId);
     expect(callArg.query.runId).toBe(specificRunId);
   });
