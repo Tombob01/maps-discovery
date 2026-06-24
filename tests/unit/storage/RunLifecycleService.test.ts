@@ -61,6 +61,10 @@ class StubRunStore implements IRunStore {
     );
   }
 
+  async listStalePending(_olderThan: Date): Promise<readonly Run[]> {
+    return [];
+  }
+
   async update(run: Run): Promise<void> {
     this.store.set(run.id, run);
     this.updateCalls.push(run);

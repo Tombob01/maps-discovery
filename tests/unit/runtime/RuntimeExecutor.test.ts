@@ -135,6 +135,7 @@ class InMemoryRunStore implements IRunStore {
       (r) => r.status === "running" && r.startedAt !== null && r.startedAt.getTime() < olderThan.getTime(),
     );
   }
+  async listStalePending(_olderThan: Date): Promise<readonly Run[]> { return []; }
   async update(run: Run): Promise<void> { this.runs.set(run.id, run); }
   async delete(id: string): Promise<boolean> { return this.runs.delete(id); }
 }

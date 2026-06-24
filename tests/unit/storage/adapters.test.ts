@@ -71,6 +71,9 @@ class StubRunStore implements IRunStore {
         r.startedAt.getTime() < olderThan.getTime(),
     );
   }
+  async listStalePending(_olderThan: Date): Promise<readonly Run[]> {
+    return [];
+  }
   async update(run: Run): Promise<void> {
     this.map.set(run.id, run);
   }

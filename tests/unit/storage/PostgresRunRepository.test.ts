@@ -131,3 +131,52 @@ describe("PostgresRunRepository.listStaleRunning — KI-8 regression: unbounded 
     expect(captured).toHaveLength(1);
   });
 });
+
+describe("PostgresRunRepository.listStalePending -- query construction", () => {
+  it("sends a WHERE clause filtering on status = 'pending'", async () => {
+    const { client, captured } = makeClient([]);
+    const repo = new PostgresRunRepository(client);
+    await repo.listStalePending(CUTOFF);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.sql).toContain("status = 'pending'");
+  });
+
+  it("sends a WHERE clause excluding null started_at", async () => {
+    const { client, captured } = makeClient([]);
+    const repo = new PostgresRunRepository(client);
+    await repo.listStalePending(CUTOFF);
+    expect(captured[0]?.sql).toContain("started_at IS NOT NULL");
+  });
+
+  it("sends a WHERE clause comparing started_at against the cutoff parameter", async () => {
+    const { client, captured } = makeClient([]);
+    const repo = new PostgresRunRepository(client);
+    await repo.listStalePending(CUTOFF);
+    expect(captured[0]?.sql).toContain("started_at <");
+    expect(captured[0]?.params).toEqual([CUTOFF]);
+  });
+
+  it("does not send a LIMIT clause", async () => {
+    const { client, captured } = makeClient([]);
+    const repo = new PostgresRunRepository(client);
+    await repo.listStalePending(CUTOFF);
+    expect(captured[0]?.sql).not.toContain("LIMIT");
+  });
+
+  it("maps a returned row correctly with status 'pending'", async () => {
+    const row = makeRunRow({ id: "run-pending-1", status: "pending" });
+    const { client } = makeClient([row]);
+    const repo = new PostgresRunRepository(client);
+    const result = await repo.listStalePending(CUTOFF);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe("run-pending-1" as RunID);
+    expect(result[0]?.status).toBe("pending");
+  });
+
+  it("returns an empty array when no rows qualify", async () => {
+    const { client } = makeClient([]);
+    const repo = new PostgresRunRepository(client);
+    const result = await repo.listStalePending(CUTOFF);
+    expect(result).toEqual([]);
+  });
+});

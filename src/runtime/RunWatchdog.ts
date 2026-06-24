@@ -14,6 +14,14 @@
  *   AND startedAt !== null
  *   AND (now - startedAt) > maxRunAgeMs
  *
+ * Pending runs that never advanced to "running" are also recovered:
+ *   status === "pending"
+ *   AND startedAt !== null
+ *   AND (now - startedAt) > maxPendingAgeMs
+ *
+ * Pending runs are failed without partialStats because execution never
+ * started -- there is no meaningful error increment to record.
+ *
  * Race-condition safety:
  *   Before calling lifecycle.fail(), the run is re-read from the store.
  *   If the status is no longer "running" (completed or failed between the
@@ -47,6 +55,15 @@ export interface RunWatchdogOptions {
   readonly scanIntervalMs?: number;
 
   /**
+   * Maximum age of a pending run before it is considered stuck and failed.
+   * Measured from startedAt (set at creation time).
+   * Shorter than maxRunAgeMs because a pending run means execution never
+   * started -- there is no in-progress work to wait for.
+   * Default: 900_000 ms (15 minutes).
+   */
+  readonly maxPendingAgeMs?: number;
+
+  /**
    * Injectable clock � returns current time in milliseconds.
    * Default: Date.now. Override in tests for deterministic behaviour.
    */
@@ -61,6 +78,7 @@ export class RunWatchdog {
   private readonly runStore: IRunStore;
   private readonly lifecycle: RunLifecycleService;
   private readonly maxRunAgeMs: number;
+  private readonly maxPendingAgeMs: number;
   private readonly scanIntervalMs: number;
   private readonly nowMs: () => number;
 
@@ -76,6 +94,7 @@ export class RunWatchdog {
     this.runStore = runStore;
     this.lifecycle = lifecycle;
     this.maxRunAgeMs = opts.maxRunAgeMs ?? 7_200_000;
+    this.maxPendingAgeMs = opts.maxPendingAgeMs ?? 900_000;
     this.scanIntervalMs = opts.scanIntervalMs ?? 300_000;
     this.nowMs = opts.nowMs ?? (() => Date.now());
   }
@@ -194,6 +213,63 @@ export class RunWatchdog {
     if (failed > 0 || candidates.length > 0) {
       console.log(
         `[watchdog:${reason}] scan complete � candidates=${candidates.length} failed=${failed} skipped=${skipped}`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Pending recovery: runs created but never advanced to "running"
+    // Uses the same re-read guard as the running recovery path above.
+    // -------------------------------------------------------------------------
+    const pendingCutoff = now - this.maxPendingAgeMs;
+    let pendingCandidates: readonly import("../core/models/Job.js").Run[];
+    try {
+      pendingCandidates = await this.runStore.listStalePending(new Date(pendingCutoff));
+    } catch (err) {
+      console.error(
+        `[watchdog:${reason}] failed to list stale pending runs:`,
+        err instanceof Error ? err.message : String(err),
+      );
+      pendingCandidates = [];
+    }
+
+    for (const candidate of pendingCandidates) {
+      let fresh: import("../core/models/Job.js").Run | null;
+      try {
+        fresh = await this.runStore.getById(candidate.id);
+      } catch (err) {
+        console.error(
+          `[watchdog:${reason}] failed to re-read pending run ${candidate.id}:`,
+          err instanceof Error ? err.message : String(err),
+        );
+        skipped++;
+        continue;
+      }
+
+      if (fresh === null || fresh.status !== "pending") {
+        skipped++;
+        continue;
+      }
+
+      try {
+        await this.lifecycle.fail(candidate.id as RunID);
+        console.warn(
+          `[watchdog:${reason}] failed stale pending run ${candidate.id} ` +
+            `(startedAt=${candidate.startedAt?.toISOString()}, ` +
+            `ageMs=${now - (candidate.startedAt?.getTime() ?? now)})`,
+        );
+        failed++;
+      } catch (err) {
+        console.error(
+          `[watchdog:${reason}] could not fail pending run ${candidate.id}:`,
+          err instanceof Error ? err.message : String(err),
+        );
+        skipped++;
+      }
+    }
+
+    if (failed > 0 || candidates.length > 0 || pendingCandidates.length > 0) {
+      console.log(
+        `[watchdog:${reason}] scan complete -- running_candidates=${candidates.length} pending_candidates=${pendingCandidates.length} failed=${failed} skipped=${skipped}`,
       );
     }
 

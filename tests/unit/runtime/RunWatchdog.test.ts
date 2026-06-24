@@ -19,6 +19,7 @@ import type { RunID } from "../../../src/core/types/common.js";
 
 const NOW = 1_000_000_000_000; // fixed epoch ms for all tests
 const TWO_HOURS_MS = 7_200_000;
+const FIFTEEN_MIN_MS = 900_000;
 
 function makeRun(overrides: Partial<Run> = {}): Run {
   return {
@@ -62,6 +63,14 @@ function makeRunStore(runs: Run[] = []): IRunStore {
           r.startedAt.getTime() < olderThan.getTime(),
       ),
     ),
+    listStalePending: vi.fn().mockImplementation(async (olderThan: Date) =>
+      runs.filter(
+        (r) =>
+          r.status === "pending" &&
+          r.startedAt !== null &&
+          r.startedAt.getTime() < olderThan.getTime(),
+      ),
+    ),
     update: vi.fn(),
     delete: vi.fn(),
   };
@@ -97,9 +106,20 @@ function makeWatchdog(
 // ---------------------------------------------------------------------------
 
 describe("RunWatchdog._scanOnce", () => {
-  it("does not fail a pending run", async () => {
-    const run = makeRun({ status: "pending" });
-    const { watchdog, lifecycle } = makeWatchdog([run]);
+  it("does not fail a fresh pending run (startedAt within maxPendingAgeMs)", async () => {
+    // A pending run younger than the pending threshold must NOT be failed.
+    const run = makeRun({
+      status: "pending",
+      startedAt: new Date(NOW - FIFTEEN_MIN_MS + 1000), // 1 second before threshold
+    });
+    const store = makeRunStore([run]);
+    const lifecycle = makeLifecycle();
+    const watchdog = new RunWatchdog(store, lifecycle, {
+      maxRunAgeMs: TWO_HOURS_MS,
+      maxPendingAgeMs: FIFTEEN_MIN_MS,
+      scanIntervalMs: 60_000,
+      nowMs: () => NOW,
+    });
     await watchdog._scanOnce("test");
     expect(lifecycle.fail).not.toHaveBeenCalled();
   });
@@ -186,6 +206,7 @@ describe("RunWatchdog race-condition guard", () => {
       create: vi.fn(),
       list: vi.fn().mockResolvedValue([staleRun]),
       listStaleRunning: vi.fn().mockResolvedValue([staleRun]),
+      listStalePending: vi.fn().mockResolvedValue([]),
       getById: vi.fn().mockResolvedValue(freshRun),
       update: vi.fn(),
       delete: vi.fn(),
@@ -209,6 +230,7 @@ describe("RunWatchdog race-condition guard", () => {
       create: vi.fn(),
       list: vi.fn().mockResolvedValue([staleRun]),
       listStaleRunning: vi.fn().mockResolvedValue([staleRun]),
+      listStalePending: vi.fn().mockResolvedValue([]),
       getById: vi.fn().mockResolvedValue(null), // disappeared
       update: vi.fn(),
       delete: vi.fn(),
@@ -289,6 +311,144 @@ describe("RunWatchdog start/stop", () => {
   it("stop() is safe to call before start()", () => {
     const { watchdog } = makeWatchdog([]);
     expect(() => watchdog.stop()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stale pending run recovery
+// ---------------------------------------------------------------------------
+
+describe("RunWatchdog._scanOnce -- stale pending recovery", () => {
+  function makePendingWatchdog(runs: Run[], lifecycleOverride?: RunLifecycleService) {
+    const store = makeRunStore(runs);
+    const lifecycle = lifecycleOverride ?? makeLifecycle();
+    const watchdog = new RunWatchdog(store, lifecycle, {
+      maxRunAgeMs: TWO_HOURS_MS,
+      maxPendingAgeMs: FIFTEEN_MIN_MS,
+      scanIntervalMs: 60_000,
+      nowMs: () => NOW,
+    });
+    return { watchdog, store, lifecycle };
+  }
+
+  it("fails a stale pending run whose startedAt exceeds maxPendingAgeMs", async () => {
+    const run = makeRun({
+      status: "pending",
+      startedAt: new Date(NOW - FIFTEEN_MIN_MS - 1), // 1 ms past threshold
+    });
+    const { watchdog, lifecycle } = makePendingWatchdog([run]);
+    await watchdog._scanOnce("test");
+    expect(lifecycle.fail).toHaveBeenCalledOnce();
+  });
+
+  it("calls lifecycle.fail() without partialStats for pending runs", async () => {
+    const run = makeRun({
+      status: "pending",
+      startedAt: new Date(NOW - FIFTEEN_MIN_MS - 1),
+    });
+    const { watchdog, lifecycle } = makePendingWatchdog([run]);
+    await watchdog._scanOnce("test");
+    // Second argument must be undefined -- no partialStats for pending runs
+    expect(lifecycle.fail).toHaveBeenCalledWith("run-001");
+    expect(lifecycle.fail).toHaveBeenCalledWith(
+      expect.any(String),
+      // ensure no second argument was passed
+    );
+    const call = (lifecycle.fail as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(call).toHaveLength(1);
+  });
+
+  it("skips a pending run that transitioned to running between list and re-read", async () => {
+    const staleRun = makeRun({
+      id: "run-pending-race" as RunID,
+      status: "pending",
+      startedAt: new Date(NOW - FIFTEEN_MIN_MS - 1),
+    });
+    const freshRun = makeRun({
+      id: "run-pending-race" as RunID,
+      status: "running", // transitioned between list and re-read
+    });
+    const store: IRunStore = {
+      create: vi.fn(),
+      list: vi.fn().mockResolvedValue([staleRun]),
+      listStaleRunning: vi.fn().mockResolvedValue([]),
+      listStalePending: vi.fn().mockResolvedValue([staleRun]),
+      getById: vi.fn().mockResolvedValue(freshRun),
+      update: vi.fn(),
+      delete: vi.fn(),
+    };
+    const lifecycle = makeLifecycle();
+    const watchdog = new RunWatchdog(store, lifecycle, {
+      maxRunAgeMs: TWO_HOURS_MS,
+      maxPendingAgeMs: FIFTEEN_MIN_MS,
+      scanIntervalMs: 60_000,
+      nowMs: () => NOW,
+    });
+    const result = await watchdog._scanOnce("test");
+    expect(lifecycle.fail).not.toHaveBeenCalled();
+    expect(result.skipped).toBe(1);
+  });
+
+  it("skips a pending run that transitioned to complete between list and re-read", async () => {
+    const staleRun = makeRun({
+      id: "run-pending-complete" as RunID,
+      status: "pending",
+      startedAt: new Date(NOW - FIFTEEN_MIN_MS - 1),
+    });
+    const freshRun = makeRun({
+      id: "run-pending-complete" as RunID,
+      status: "complete",
+      completedAt: new Date(NOW - 100),
+    });
+    const store: IRunStore = {
+      create: vi.fn(),
+      list: vi.fn().mockResolvedValue([staleRun]),
+      listStaleRunning: vi.fn().mockResolvedValue([]),
+      listStalePending: vi.fn().mockResolvedValue([staleRun]),
+      getById: vi.fn().mockResolvedValue(freshRun),
+      update: vi.fn(),
+      delete: vi.fn(),
+    };
+    const lifecycle = makeLifecycle();
+    const watchdog = new RunWatchdog(store, lifecycle, {
+      maxRunAgeMs: TWO_HOURS_MS,
+      maxPendingAgeMs: FIFTEEN_MIN_MS,
+      scanIntervalMs: 60_000,
+      nowMs: () => NOW,
+    });
+    const result = await watchdog._scanOnce("test");
+    expect(lifecycle.fail).not.toHaveBeenCalled();
+    expect(result.skipped).toBe(1);
+  });
+
+  it("recovers both stale running and stale pending runs in the same scan", async () => {
+    const runningRun = makeRun({
+      id: "run-stale-running" as RunID,
+      status: "running",
+      startedAt: new Date(NOW - TWO_HOURS_MS - 1),
+    });
+    const pendingRun = makeRun({
+      id: "run-stale-pending" as RunID,
+      status: "pending",
+      startedAt: new Date(NOW - FIFTEEN_MIN_MS - 1),
+    });
+    const store = makeRunStore([runningRun, pendingRun]);
+    const lifecycle = makeLifecycle();
+    const watchdog = new RunWatchdog(store, lifecycle, {
+      maxRunAgeMs: TWO_HOURS_MS,
+      maxPendingAgeMs: FIFTEEN_MIN_MS,
+      scanIntervalMs: 60_000,
+      nowMs: () => NOW,
+    });
+    const result = await watchdog._scanOnce("test");
+    expect(lifecycle.fail).toHaveBeenCalledTimes(2);
+    expect(result.failed).toBe(2);
+    // Running run gets { errors: 1 }; pending run gets no partialStats
+    const calls = (lifecycle.fail as ReturnType<typeof vi.fn>).mock.calls;
+    const runningCall = calls.find((c) => c[0] === "run-stale-running")!;
+    const pendingCall = calls.find((c) => c[0] === "run-stale-pending")!;
+    expect(runningCall[1]).toEqual({ errors: 1 });
+    expect(pendingCall).toHaveLength(1); // no second arg
   });
 });
 
