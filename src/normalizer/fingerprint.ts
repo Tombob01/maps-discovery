@@ -7,11 +7,12 @@
  * Uses a pure-JS djb2 hash to avoid requiring Node crypto in tests;
  * the format is hex-like to satisfy Fingerprint brand expectations.
  *
- * Fields contributing to the fingerprint (normalised, nulls removed):
- *   - normalizedName
- *   - address.city (lower)
- *   - address.country (lower)
- *   - normalizedPhone
+ * Identity key selection:
+ *   - If externalIds.googlePlaceId is present: (sourceProvider, "placeId",
+ *     googlePlaceId) alone determines the fingerprint.
+ *   - Otherwise, falls back to (normalizedName, address.city (lower),
+ *     address.country (lower), normalizedPhone), all normalised, nulls
+ *     removed.
  */
 
 import type { BusinessRecord } from "../core/models/BusinessRecord.js";
@@ -31,12 +32,28 @@ function djb2hex(s: string): string {
 }
 
 export function fingerprintRecord(record: PartialRecord): string {
-  const parts = [
-    record.normalizedName,
-    record.address.city?.toLowerCase() ?? "",
-    record.address.country?.toLowerCase() ?? "",
-    record.normalizedPhone ?? "",
-  ];
+  // Google Place ID is the strongest identity signal available: it is a
+  // stable, provider-assigned identifier for a specific real-world
+  // listing, unaffected by name-string variance, missing phone data, or
+  // city/country normalization gaps. When present, it alone determines
+  // identity for that provider's listing -- two records sharing the same
+  // (sourceProvider, googlePlaceId) pair are the same real-world listing
+  // by definition, regardless of any other field.
+  //
+  // When absent (e.g. only sidebar-card data was scraped, no detail
+  // panel), the prior four-field fallback is used unchanged.
+  const placeId = record.externalIds?.googlePlaceId?.trim();
+
+  const parts =
+    placeId !== undefined && placeId !== ""
+      ? [record.sourceProvider, "placeId", placeId]
+      : [
+          record.normalizedName,
+          record.address.city?.toLowerCase() ?? "",
+          record.address.country?.toLowerCase() ?? "",
+          record.normalizedPhone ?? "",
+        ];
+
   const raw = parts.join("|");
   // Double-hash for a slightly longer output resembling a real fingerprint
   return djb2hex(raw) + djb2hex(raw + raw);

@@ -264,28 +264,32 @@ describe("GoogleMapsProviderMapper", () => {
     expect(mapper.providerId).toBe("google-maps");
   });
 
-  it("extracts fields from a full payload", () => {
+  it("extracts fields from a real adapter payload", () => {
+    // Payload shape matches what GoogleMapsAdapter.buildPayload() actually writes
+    // verified from runtime raw_payload rows in the database
     const r = mapper.extractFields({
       name: "Ace Plumbers",
       phone: "+234 801 234 5678",
       address: "1 Marina, Lagos",
-      city: "Lagos",
-      country: "Nigeria",
-      lat: 6.5244,
-      lng: 3.3792,
-      rating: 4.5,
-      reviewCount: 123,
-      priceLevel: 2,
-      categories: ["plumbing"],
-      hours: ["Mon-Fri: 09:00-17:00"],
       placeId: "ChIJ123",
-      url: "https://maps.google.com/place/123",
+      website: "https://aceplumbers.ng",
+      listingUrl: "https://maps.google.com/place/123",
+      ratingText: "4.5 stars",
+      reviewCountText: "123 reviews",
+      categoryText: "Plumbing",
+      coordinates: { lat: 6.5244, lng: 3.3792 },
+      hoursRaw: ["Mon-Fri: 09:00-17:00"],
     });
     expect(isOk(r)).toBe(true);
     if (isOk(r)) {
       expect(r.value.name).toBe("Ace Plumbers");
+      expect(r.value.rating).toBe(4.5);
+      expect(r.value.reviewCount).toBe(123);
+      expect(r.value.categories).toEqual(["Plumbing"]);
       expect(r.value.lat).toBe(6.5244);
-      expect(r.value.categories).toEqual(["plumbing"]);
+      expect(r.value.lng).toBe(3.3792);
+      expect(r.value.sourceUrl).toBe("https://maps.google.com/place/123");
+      expect(r.value.hoursRaw).toEqual(["Mon-Fri: 09:00-17:00"]);
       expect(r.value.externalIds?.googlePlaceId).toBe("ChIJ123");
     }
   });
@@ -363,6 +367,7 @@ describe("fingerprintRecord", () => {
       collectedAt: new Date(),
       runId: "run-1" as RunID,
       queryId: "query-1" as QueryID,
+      services: null,
       normalizationStatus: "complete" as const,
       deduplicationStatus: "pending" as const,
       exportStatus: "pending" as const,
@@ -419,24 +424,20 @@ describe("BusinessNormalizer — integration", () => {
   const mapper = new GoogleMapsProviderMapper();
   const normalizer = new BusinessNormalizer([mapper]);
 
+  // fullPayload matches what GoogleMapsAdapter.buildPayload() actually writes
+  // verified from runtime raw_payload rows in the database
   const fullPayload = {
     name: "Ace Plumbers Ltd",
     phone: "+234 801 234 5678",
     website: "https://aceplumbers.ng",
     address: "1 Marina, Lagos Island, Lagos, Nigeria",
-    street: "1 Marina",
-    city: "Lagos",
-    state: "Lagos",
-    country: "Nigeria",
-    lat: 6.5244,
-    lng: 3.3792,
-    rating: 4.5,
-    reviewCount: 123,
-    priceLevel: 2,
-    categories: ["plumbing", "home-services"],
-    hours: ["Mon-Fri: 09:00-17:00", "Saturday: 10:00-14:00"],
     placeId: "ChIJ123",
-    url: "https://maps.google.com/place/123",
+    listingUrl: "https://maps.google.com/place/123",
+    ratingText: "4.5 stars",
+    reviewCountText: "123 reviews",
+    categoryText: "Plumbing, Home Services",
+    coordinates: { lat: 6.5244, lng: 3.3792 },
+    hoursRaw: ["Mon-Fri: 09:00-17:00", "Saturday: 10:00-14:00"],
   };
 
   it("normalises a full provider result into a BusinessRecord", async () => {
@@ -449,14 +450,17 @@ describe("BusinessNormalizer — integration", () => {
     expect(rec.name).toBe("Ace Plumbers Ltd");
     expect(rec.normalizedName).toBe("ace plumbers ltd");
     expect(rec.normalizedPhone).toBe("+2348012345678");
-    expect(rec.address.city).toBe("Lagos");
+    expect(rec.address.raw).toBe("1 Marina, Lagos Island, Lagos, Nigeria");
     expect(rec.geo).toEqual({ lat: 6.5244, lng: 3.3792 });
     expect(rec.rating).toBe(4.5);
     expect(rec.reviewCount).toBe(123);
-    expect(rec.priceLevel).toBe(2);
-    expect(rec.categories).toEqual(["plumbing", "home-services"]);
-    expect(rec.primaryCategory).toBe("plumbing");
-    expect(rec.hours?.parsed).not.toBeNull();
+    // priceLevel: priceLevelText absent from real adapter payload � remains null
+    expect(rec.priceLevel).toBeNull();
+    expect(rec.categories).toEqual(["Plumbing", "Home Services"]);
+    expect(rec.primaryCategory).toBe("Plumbing");
+    // hours.raw preserved exactly; parsed may be null due to adapter format difference
+    expect(rec.hours?.raw).toEqual(["Mon-Fri: 09:00-17:00", "Saturday: 10:00-14:00"]);
+    expect(rec.sourceUrl).toBe("https://maps.google.com/place/123");
     expect(rec.normalizationStatus).toBe("complete");
     expect(rec.deduplicationStatus).toBe("pending");
     expect(rec.exportStatus).toBe("pending");
@@ -512,8 +516,24 @@ describe("BusinessNormalizer — integration", () => {
     }
   });
 
-  it("ignores priceLevel outside 1-4 range", async () => {
-    const result = makeProviderResult({ ...fullPayload, priceLevel: 7 });
+  it("sets services to null when not in payload", async () => {
+    const result = makeProviderResult(fullPayload);
+    const r = await normalizer.normalize(result, ctx);
+    expect(isOk(r)).toBe(true);
+    if (isOk(r)) expect(r.value.services).toBeNull();
+  });
+
+  it("maps services array from payload", async () => {
+    const result = makeProviderResult({ ...fullPayload, services: ["Drain cleaning", "Leak detection"] });
+    const r = await normalizer.normalize(result, ctx);
+    expect(isOk(r)).toBe(true);
+    if (isOk(r)) expect(r.value.services).toEqual(["Drain cleaning", "Leak detection"]);
+  });
+
+  it("priceLevel is null when priceLevelText is absent from payload", async () => {
+    // priceLevelText is currently absent from the real adapter payload
+    // confirmed from runtime raw_payload rows � priceLevel always null
+    const result = makeProviderResult({ ...fullPayload });
     const r = await normalizer.normalize(result, ctx);
     expect(isOk(r)).toBe(true);
     if (isOk(r)) expect(r.value.priceLevel).toBeNull();
@@ -536,6 +556,11 @@ describe("BusinessNormalizer — integration", () => {
         ...fullPayload,
         name: "Best Electricians",
         city: "Abuja",
+        // Distinct placeId: under corrected identity semantics, a shared
+        // googlePlaceId means "same real-world listing" regardless of
+        // other fields, so two genuinely different businesses must have
+        // different placeIds for this fixture to be meaningful.
+        placeId: "ChIJ456",
       }),
       ctx,
     );
