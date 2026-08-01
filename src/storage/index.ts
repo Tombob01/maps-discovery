@@ -25,3 +25,9 @@ export type {
 } from "./PostgresRunServiceAdapter.js";
 
 export { InMemoryRawResultStore } from "./InMemoryRawResultStore.js";
+
+export type { IProposalStore, PersistedProposal } from "./IProposalStore.js";
+export { PostgresProposalRepository } from "./PostgresProposalRepository.js";
+
+export type { IConfirmationStore, PersistedConfirmation } from "./IConfirmationStore.js";
+export { PostgresConfirmationRepository } from "./PostgresConfirmationRepository.js";
