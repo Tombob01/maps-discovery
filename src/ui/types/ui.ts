@@ -1,4 +1,4 @@
-﻿// â”€â”€â”€ Domain value types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€â”€ Domain value types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type RunStatus = 'pending' | 'running' | 'complete' | 'failed';
 export type ExportFormat = 'csv' | 'jsonl';
@@ -69,6 +69,17 @@ export interface RunStats {
   discovered: number;
   normalized: number;
   failed: number;
+  duplicatesRemoved: number;
+  uniqueBusinesses: number;
+  exported: number;
+}
+
+export interface SeedStatus {
+  index: number;
+  keyword: string;
+  location: string;
+  status: 'pending' | 'running' | 'complete' | 'failed';
+  error?: string;
 }
 
 export interface Run {
@@ -76,6 +87,7 @@ export interface Run {
   status: RunStatus;
   stats: RunStats;
   currentSeed?: string | null;
+  seeds?: SeedStatus[] | null;
 }
 
 export interface BusinessRecord {
@@ -127,6 +139,7 @@ export interface DiscoveryFlowState {
   exportPhase: Phase;
   exportError: string | null;
   currentSeed: string | null;
+  seeds?: SeedStatus[] | null;
   isPollingStalled: boolean;
 }
 
@@ -182,7 +195,14 @@ export const mockFacade: IRuntimeFacade = {
     return delay(300, {
       id: runId,
       status: 'complete' as RunStatus,
-      stats: { discovered: MOCK_RECORDS.length, normalized: MOCK_RECORDS.length, failed: 0 },
+      stats: {
+        discovered: MOCK_RECORDS.length,
+        normalized: MOCK_RECORDS.length,
+        failed: 0,
+        duplicatesRemoved: 0,
+        uniqueBusinesses: MOCK_RECORDS.length,
+        exported: 0,
+      },
     });
   },
 

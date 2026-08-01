@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @module api/server
  * Thin HTTP adapter over RuntimeFacade.
  * Routes map 1:1 to facade methods. No business logic here.
@@ -63,7 +63,14 @@ export function createServer(
   // Safe because this server currently allows only one active execution
   // at a time via `isExecuting`. If concurrent run execution is introduced
   // in the future, revisit this tracking mechanism and the execution model.
-  const currentSeedByRun = new Map<string, string>();
+  type SeedStatus = {
+    index: number;
+    keyword: string;
+    location: string;
+    status: "pending" | "running" | "complete" | "failed";
+    error?: string;
+  };
+  const seedStatusByRun = new Map<string, SeedStatus[]>();
 
   // Allow the Vite dev server (port 5173) to call this API (port 3001)
   app.use(
@@ -176,13 +183,21 @@ export function createServer(
       location: s.location.trim(),
     }));
 
+    seedStatusByRun.set(
+      runId,
+      seedsCopy.map((s, index) => ({ index, keyword: s.keyword, location: s.location, status: "pending" as const })),
+    );
+
     // Set guard before returning so concurrent requests are rejected immediately.
     isExecuting = true;
     void (async () => {
 
     // Background pipeline — client polls GET /api/runs/:id for updates.
-      for (const seed of seedsCopy) {
-        currentSeedByRun.set(runId, seed.keyword);
+      for (let i = 0; i < seedsCopy.length; i++) {
+        const seed = seedsCopy[i]!;
+        const statuses = seedStatusByRun.get(runId);
+        const entry = statuses?.[i];
+        if (entry) entry.status = "running";
         try {
           await facade.executeFromSeed({
             provider,
@@ -190,11 +205,14 @@ export function createServer(
             keyword: seed.keyword,
             location: seed.location,
           });
+          if (entry) entry.status = "complete";
         } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
           console.error(
             "[execute:seed-failed] keyword=" + seed.keyword +
-            " error=" + (err instanceof Error ? err.message : String(err)),
+            " error=" + message,
           );
+          if (entry) { entry.status = "failed"; entry.error = message; }
           // continue to next seed — failure of one keyword must not stop the batch
         }
       }
@@ -207,7 +225,8 @@ export function createServer(
       })
       .finally(() => {
         isExecuting = false;
-        currentSeedByRun.delete(runId);
+        // seedStatusByRun is intentionally NOT cleared here; seed
+        // progress is retained until the backend process restarts.
       });
 
     return c.json({ ok: true, data: { runId, status: "running" } }, 202);
@@ -223,8 +242,10 @@ export function createServer(
       if (run === null) {
         return c.json({ ok: false, error: { code: "NOT_FOUND", message: `Run "${runId}" not found` } }, 404);
       }
-      const currentSeed = currentSeedByRun.get(runId) ?? null;
-      return c.json({ ok: true, data: { ...run, currentSeed } });
+      const seeds = seedStatusByRun.get(runId);
+      const runningSeed = seeds?.find(s => s.status === "running");
+      const currentSeed = runningSeed?.keyword ?? null;
+      return c.json({ ok: true, data: { ...run, currentSeed, seeds: seeds ?? null } });
     } catch (err) {
       return c.json(
         { ok: false, error: { code: "GET_FAILED", message: err instanceof Error ? err.message : String(err) } },

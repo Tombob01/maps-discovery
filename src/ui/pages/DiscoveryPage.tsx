@@ -82,6 +82,7 @@ export function DiscoveryPage({ facade = mockFacade }: Props): React.ReactElemen
                   progress={state.progress}
                   stats={state.stats}
                   currentSeed={state.currentSeed}
+                  seeds={state.seeds}
                   isPollingStalled={state.isPollingStalled}
                 />
 

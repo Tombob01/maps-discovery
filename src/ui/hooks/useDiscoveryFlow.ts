@@ -12,6 +12,7 @@ import type {
   ExportFormat,
   ExpandedSuggestion,
   ExpansionStrategy,
+  SeedStatus,
 } from '../types/ui.js';
 
 // --- State shape & reducer ---------------------------------------------------
@@ -37,6 +38,7 @@ type Action =
   | { type: 'SET_EXPORT_PHASE'; phase: Phase }
   | { type: 'SET_EXPORT_ERROR'; error: string | null }
   | { type: 'SET_CURRENT_SEED'; seed: string | null }
+  | { type: 'SET_SEEDS'; seeds: SeedStatus[] | null }
   | { type: 'SET_POLLING_STALLED'; stalled: boolean };
 
 const initialState: DiscoveryFlowState = {
@@ -57,6 +59,7 @@ const initialState: DiscoveryFlowState = {
   exportPhase: 'idle' as Phase,
   exportError: null,
   currentSeed: null,
+  seeds: null,
   isPollingStalled: false,
 };
 
@@ -113,6 +116,8 @@ export function reducer(state: DiscoveryFlowState, action: Action): DiscoveryFlo
       return { ...state, exportError: action.error };
     case 'SET_CURRENT_SEED':
       return { ...state, currentSeed: action.seed };
+    case 'SET_SEEDS':
+      return { ...state, seeds: action.seeds };
     case 'SET_POLLING_STALLED':
       return { ...state, isPollingStalled: action.stalled };
     case 'SET_STRATEGY':
@@ -219,6 +224,7 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
       facade.getRun(activeRunId).then(run => {
         dispatch({ type: 'SET_STATS', stats: run.stats });
         dispatch({ type: 'SET_CURRENT_SEED', seed: run.currentSeed ?? null });
+        dispatch({ type: 'SET_SEEDS', seeds: run.seeds ?? null });
         const pct = Math.min(85, 30 + Math.round(
           (run.stats.normalized / Math.max(1, run.stats.discovered)) * 55
         ));
@@ -265,6 +271,7 @@ export function useDiscoveryFlow(facade: IRuntimeFacade): UseDiscoveryFlowReturn
     facade.getRun(storedRunId).then(run => {
       dispatch({ type: 'SET_STATS', stats: run.stats });
       dispatch({ type: 'SET_CURRENT_SEED', seed: run.currentSeed ?? null });
+      dispatch({ type: 'SET_SEEDS', seeds: run.seeds ?? null });
 
       if (run.status === 'pending' || run.status === 'running') {
         dispatch({ type: 'SET_RUN_STATUS', status: run.status });

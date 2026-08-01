@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @module ui/lib/httpClient
  * Implements IRuntimeFacade via fetch() against the Hono HTTP server.
  *
@@ -148,9 +148,12 @@ function toUIRun(backend: BackendRun): Run {
     id: backend.id,
     status: backend.status as Run['status'],
     stats: {
-      discovered: backend.stats.rawResultsFound,
-      normalized: backend.stats.recordsNormalized,
-      failed: backend.stats.errors,
+      discovered: backend.stats.rawResultsFound ?? 0,
+      normalized: backend.stats.recordsNormalized ?? 0,
+      failed: backend.stats.errors ?? 0,
+      duplicatesRemoved: backend.stats.recordsDuplicate ?? 0,
+      uniqueBusinesses: backend.stats.recordsUnique ?? 0,
+      exported: backend.stats.recordsExported ?? 0,
     },
     ...(backend.currentSeed !== undefined ? { currentSeed: backend.currentSeed } : {}),
   };

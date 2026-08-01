@@ -1,5 +1,6 @@
 import React from 'react';
-import type { RunStatus, RunStats } from '../types/ui.js';
+import type { RunStatus, RunStats, SeedStatus } from '../types/ui.js';
+import { PipelineProgressPanel } from './PipelineProgressPanel.js';
 
 interface Props {
   runId: string | null;
@@ -7,6 +8,7 @@ interface Props {
   progress: number;
   stats: RunStats | null;
   currentSeed?: string | null;
+  seeds?: SeedStatus[] | null;
   isPollingStalled: boolean;
 }
 
@@ -88,6 +90,7 @@ export function RunProgressRow({
   progress,
   stats,
   currentSeed,
+  seeds,
   isPollingStalled,
 }: Props): React.ReactElement {
   const statusDisplay = getStatusDisplay(runStatus, isPollingStalled);
@@ -164,6 +167,34 @@ export function RunProgressRow({
           Current keyword: {currentSeed}
         </p>
       )}
+
+      {seeds != null && seeds.length > 0 && (() => {
+        const completed = seeds.filter(s => s.status === 'complete').length;
+        const running = seeds.filter(s => s.status === 'running').length;
+        const failed = seeds.filter(s => s.status === 'failed').length;
+        const total = seeds.length;
+        const remaining = total - completed - running - failed;
+        const current = completed + failed + running;
+        return (
+          <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 dark:border-neutral-700 dark:bg-neutral-800">
+            <p className="text-[11px] font-medium uppercase tracking-widest text-neutral-500">
+              Keyword Seed Progress
+            </p>
+            <p className="mt-1 font-mono text-sm text-neutral-700 dark:text-neutral-300">
+              Seed {current} of {total}
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <StatCard label="completed" value={completed} />
+              <StatCard label="running" value={running} />
+              <StatCard label="failed" value={failed} highlight={failed > 0} />
+              <StatCard label="remaining" value={remaining} />
+              <StatCard label="total" value={total} />
+            </div>
+          </div>
+        );
+      })()}
+
+      <PipelineProgressPanel stats={stats} />
 
       {/* Extraction panel - visible while running and after completion */}
       {showExtractionPanel && stats !== null && (
