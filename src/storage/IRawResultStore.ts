@@ -14,17 +14,46 @@
  */
 
 import type { ProviderResult } from "../core/models/ProviderResult.js";
+import type { UUID } from "../core/types/common.js";
 
 export interface IRawResultStore {
   /**
    * Persist a single ProviderResult.
-   * Keyed by providerResultId. Idempotent - saving the same id twice is safe.
+   * Keyed by (runId, providerId, providerResultId). Idempotent - saving the
+   * same identity twice is safe.
+   *
+   * Returns `true` if a new row was written, or `false` if the operation
+   * was a no-op because a result with the same identity already existed
+   * (e.g. rediscovered via an overlapping query within the same run).
    */
-  save(result: ProviderResult): Promise<void>;
+  save(result: ProviderResult): Promise<boolean>;
 
   /**
    * Fetch a ProviderResult by its providerResultId.
    * Returns null if no matching result exists.
    */
   fetch(id: string): Promise<ProviderResult | null>;
+
+  /**
+   * Fetch a ProviderResult by the persisted raw_results.id (UUID primary
+   * key), as opposed to fetch()'s providerResultId key. Introduced for
+   * proposal lineage (ADR-7): IdentityProposal.rawResultId and
+   * proposals.raw_result_id both reference this UUID, not
+   * providerResultId. Returns null if no matching result exists.
+   */
+  fetchById(id: UUID): Promise<ProviderResult | null>;
+
+  /**
+   * Persist a single ProviderResult, same idempotency semantics as
+   * save(), but additionally returns the raw_results.id UUID assigned
+   * to this identity. Additive alongside save() -- does not replace it.
+   * Introduced so callers (e.g. a future proposal-production trigger)
+   * can obtain the UUID at persistence time without a second round-trip.
+   *
+   * Returns { id, isNew: true } when a new row was written, or
+   * { id, isNew: false } with the PREVIOUSLY assigned id when the
+   * operation was a no-op because a result with the same identity
+   * already existed.
+   */
+  saveAndGetId(result: ProviderResult): Promise<{ id: UUID; isNew: boolean }>;
 }

@@ -7,7 +7,7 @@
  */
 
 import type { ProviderResult } from "../core/models/ProviderResult.js";
-import type { RunID, QueryID } from "../core/types/common.js";
+import type { RunID, QueryID, UUID } from "../core/types/common.js";
 import type { ResumeToken } from "../core/types/pagination.js";
 import type { IRawResultStore } from "./IRawResultStore.js";
 import type { PostgresClient, Row } from "./PostgresClient.js";
@@ -41,16 +41,16 @@ function rowToProviderResult(row: RawResultRow): ProviderResult {
 export class PostgresRawResultRepository implements IRawResultStore {
   constructor(private readonly db: PostgresClient) {}
 
-  async save(result: ProviderResult): Promise<void> {
+  async save(result: ProviderResult): Promise<boolean> {
     const sql =
       "INSERT INTO raw_results" +
       " (run_id, query_id, provider_id, provider_result_id," +
       "  raw_payload, resume_token, source_url, collected_at)" +
       " VALUES ($1, $2, $3, $4, $5, $6, $7, $8)" +
       " ON CONFLICT ON CONSTRAINT uq_raw_results_provider_result DO NOTHING";
-    await this.db.query(sql, [
+    const pgResult = await this.db.query(sql, [
       result.runId,
-      null, // query_id: deferred — queries table not yet populated (KI-2)
+      null, // query_id: deferred - queries table not yet populated (KI-2)
       result.providerId,
       result.providerResultId,
       JSON.stringify(result.rawPayload),
@@ -58,6 +58,7 @@ export class PostgresRawResultRepository implements IRawResultStore {
       result.sourceUrl ?? null,
       result.collectedAt,
     ]);
+    return (pgResult.rowCount ?? 0) > 0;
   }
 
   async fetch(id: string): Promise<ProviderResult | null> {
@@ -72,5 +73,63 @@ export class PostgresRawResultRepository implements IRawResultStore {
     const row = rows[0];
     return row !== undefined ? rowToProviderResult(row) : null;
   }
-}
 
+  async fetchById(id: UUID): Promise<ProviderResult | null> {
+    const sql =
+      "SELECT id, run_id, query_id, provider_id, provider_result_id," +
+      " raw_payload, resume_token, source_url, collected_at, processed" +
+      " FROM raw_results" +
+      " WHERE id = $1";
+    const { rows } = await this.db.query<RawResultRow>(sql, [id]);
+    const row = rows[0];
+    return row !== undefined ? rowToProviderResult(row) : null;
+  }
+
+  async saveAndGetId(result: ProviderResult): Promise<{ id: UUID; isNew: boolean }> {
+    const insertSql =
+      "INSERT INTO raw_results" +
+      " (run_id, query_id, provider_id, provider_result_id," +
+      "  raw_payload, resume_token, source_url, collected_at)" +
+      " VALUES ($1, $2, $3, $4, $5, $6, $7, $8)" +
+      " ON CONFLICT ON CONSTRAINT uq_raw_results_provider_result DO NOTHING" +
+      " RETURNING id";
+    const { rows } = await this.db.query<{ id: string }>(insertSql, [
+      result.runId,
+      null, // query_id: deferred - queries table not yet populated (KI-2)
+      result.providerId,
+      result.providerResultId,
+      JSON.stringify(result.rawPayload),
+      result.resumeToken != null ? JSON.stringify(result.resumeToken) : null,
+      result.sourceUrl ?? null,
+      result.collectedAt,
+    ]);
+
+    const insertedRow = rows[0];
+    if (insertedRow !== undefined) {
+      return { id: insertedRow.id as UUID, isNew: true };
+    }
+
+    // Conflict occurred (DO NOTHING) -- RETURNING yielded no row. Fall back
+    // to a lookup keyed on the exact same uniqueness dimensions as
+    // uq_raw_results_provider_result, to preserve existing idempotency
+    // semantics without redesigning the uniqueness model.
+    const fallbackSql =
+      "SELECT id" +
+      " FROM raw_results" +
+      " WHERE run_id = $1 AND provider_id = $2 AND provider_result_id = $3" +
+      " ORDER BY created_at DESC" +
+      " LIMIT 1";
+    const { rows: fallbackRows } = await this.db.query<{ id: string }>(fallbackSql, [
+      result.runId,
+      result.providerId,
+      result.providerResultId,
+    ]);
+    const existingRow = fallbackRows[0];
+    if (existingRow === undefined) {
+      throw new Error(
+        "PostgresRawResultRepository.saveAndGetId(): INSERT reported a conflict but no existing row was found on fallback lookup",
+      );
+    }
+    return { id: existingRow.id as UUID, isNew: false };
+  }
+}

@@ -176,6 +176,7 @@ function makeRecord(id: string): BusinessRecord {
     normalizationStatus: "complete",
     deduplicationStatus: "unique",
     exportStatus: "pending",
+    services: null,
   };
 }
 
