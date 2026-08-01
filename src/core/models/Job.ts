@@ -28,6 +28,7 @@ export type QueueName =
   | "query:expand"
   | "discovery"
   | "normalization"
+  | "proposal-production"
   | "deduplication"
   | "export";
 
@@ -83,6 +84,13 @@ export interface NormalizationJobPayload {
   readonly providerId: string;
 }
 
+export interface ProposalProductionJobPayload {
+  readonly runId: RunID;
+  readonly queryId: QueryID;
+  readonly rawResultId: UUID;
+  readonly providerId: string;
+}
+
 export interface DeduplicationJobPayload {
   readonly runId: RunID;
   readonly businessRecordId: BusinessID;
@@ -101,6 +109,7 @@ export type JobPayload =
   | QueryExpansionJobPayload
   | DiscoveryJobPayload
   | NormalizationJobPayload
+  | ProposalProductionJobPayload
   | DeduplicationJobPayload
   | ExportJobPayload;
 

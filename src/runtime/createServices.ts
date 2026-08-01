@@ -13,6 +13,11 @@ import { JsonLinesExporter } from "../exporters/JsonLinesExporter.js";
 import { CsvExporter } from "../exporters/CsvExporter.js";
 import { BusinessNormalizer } from "../normalizer/BusinessNormalizer.js";
 import { GoogleMapsProviderMapper } from "../normalizer/GoogleMapsProviderMapper.js";
+import { ProposalBuilder } from "../normalizer/ProposalBuilder.js";
+import { PostgresProposalRepository } from "../storage/PostgresProposalRepository.js";
+import { ProposalOrchestrator } from "../proposal/ProposalOrchestrator.js";
+import { ProposalProductionStage } from "../pipeline/ProposalProductionStage.js";
+import { ProposalProductionCoordinator } from "../pipeline/ProposalProductionCoordinator.js";
 import { DiscoveryRunner } from "./DiscoveryRunner.js";
 import { RuntimeExecutor } from "./RuntimeExecutor.js";
 import { RuntimeFacade } from "./RuntimeFacade.js";
@@ -30,7 +35,7 @@ import { resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IProvider } from "../core/interfaces/IProvider.js";
 import type { IExporter } from "../exporters/IExporter.js";
-import type { NormalizationJobPayload } from "../core/models/Job.js";
+import type { NormalizationJobPayload, ProposalProductionJobPayload } from "../core/models/Job.js";
 import type { IQueue } from "../queue/IQueue.js";
 import type { AssembledStorage } from "./createStorage.js";
 import type { IKeywordExpansionProvider } from "../ai/IKeywordExpansionProvider.js";
@@ -47,6 +52,9 @@ export interface AssembledServices {
   readonly lifecycle: RunLifecycleService;
   readonly rawResultStore: IRawResultStore;
   readonly normalizationQueue: IQueue<NormalizationJobPayload>;
+  readonly proposalProductionQueue: IQueue<ProposalProductionJobPayload>;
+  readonly proposalProductionStage: ProposalProductionStage;
+  readonly proposalProductionCoordinator: ProposalProductionCoordinator;
   readonly coordinator: RunCoordinator;
   readonly runService: RunService;
   readonly createDiscoveryRunner: (provider: IProvider) => DiscoveryRunner;
@@ -82,6 +90,20 @@ export function createServices(
   const normalizationQueue: IQueue<NormalizationJobPayload> =
     overrides.normalizationQueue ?? createDefaultNormalizationQueue(queueConfig);
   const normalizer = new BusinessNormalizer([new GoogleMapsProviderMapper()]);
+  const proposalBuilder = new ProposalBuilder([new GoogleMapsProviderMapper()]);
+  const proposalStore = new PostgresProposalRepository(storage.client);
+  const proposalOrchestrator = new ProposalOrchestrator(
+    rawResultStore,
+    proposalBuilder,
+    proposalStore,
+  );
+  const proposalProductionStage = new ProposalProductionStage(proposalOrchestrator);
+  const proposalProductionQueue: IQueue<ProposalProductionJobPayload> =
+    new InMemoryQueue<ProposalProductionJobPayload>("proposal-production");
+  const proposalProductionCoordinator = new ProposalProductionCoordinator(
+    proposalProductionQueue,
+    proposalProductionStage,
+  );
   const coordinator = new RunCoordinator(lifecycle, normalizer, normalizationQueue, {
     fetchRawResult: (id) => rawResultStore.fetch(id),
   });
@@ -94,7 +116,7 @@ export function createServices(
     ]);
   const runService = new RunService(storage.runServiceStore, storage.recordServiceStore, exporters);
   const createDiscoveryRunner = (provider: IProvider): DiscoveryRunner => {
-    return new DiscoveryRunner(provider, rawResultStore, normalizationQueue);
+    return new DiscoveryRunner(provider, rawResultStore, normalizationQueue, proposalProductionQueue);
   };
   const runtimeExecutor = new RuntimeExecutor(createDiscoveryRunner, coordinator);
 
@@ -154,6 +176,7 @@ export function createServices(
 
   return {
     lifecycle, rawResultStore, normalizationQueue, coordinator,
+    proposalProductionQueue, proposalProductionStage, proposalProductionCoordinator,
     runService, createDiscoveryRunner, runtimeExecutor,
     expansionService, queryEngine, geoResolver, resolvedQueryFactory,
     runtimeFacade, shutdown,

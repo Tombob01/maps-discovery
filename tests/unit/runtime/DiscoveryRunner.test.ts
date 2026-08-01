@@ -12,6 +12,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { DiscoveryRunner } from "../../../src/runtime/DiscoveryRunner.js";
 import { InMemoryRawResultStore } from "../../../src/storage/InMemoryRawResultStore.js";
 import { InMemoryQueue } from "../../../src/queue/InMemoryQueue.js";
+import type { IQueue } from "../../../src/queue/IQueue.js";
 import { createServices } from "../../../src/runtime/createServices.js";
 import type {
   IProvider,
@@ -23,6 +24,7 @@ import type { ProviderResult } from "../../../src/core/models/ProviderResult.js"
 import type { ResolvedQuery } from "../../../src/core/models/Query.js";
 import type {
   NormalizationJobPayload,
+  ProposalProductionJobPayload,
   Run,
 } from "../../../src/core/models/Job.js";
 import type { RunID, QueryID } from "../../../src/core/types/common.js";
@@ -261,6 +263,67 @@ describe("DiscoveryRunner", () => {
     expect(dequeued.value.payload.rawResultId).toBe("result-1");
   });
 
+  // ---------------------------------------------------------------------------
+  // Option 4: persistence-aware enqueueing
+  // ---------------------------------------------------------------------------
+
+  it("does not enqueue a second job when the same providerResultId is rediscovered within one run", async () => {
+    const dup = makeProviderResult(1);
+    const provider = makeMockProvider([dup, dup, makeProviderResult(2)]);
+    const runner = new DiscoveryRunner(provider, rawResultStore, normalizationQueue);
+
+    const stats = await runner.run(makeResolvedQuery());
+
+    expect(stats.resultsCollected).toBe(3);
+    expect(stats.resultsSaved).toBe(2);
+    expect(stats.jobsEnqueued).toBe(2);
+    expect(stats.errors).toBe(0);
+
+    const depth = await normalizationQueue.depth();
+    expect(depth.ok ? depth.value : -1).toBe(2);
+  });
+
+  it("treats the same providerResultId in two different runs as two separate inserts", async () => {
+    const runIdA = "run-a" as RunID;
+    const runIdB = "run-b" as RunID;
+
+    const resultA = makeProviderResult(1, runIdA);
+    const resultB = makeProviderResult(1, runIdB);
+
+    expect(await rawResultStore.save(resultA)).toBe(true);
+    expect(await rawResultStore.save(resultB)).toBe(true);
+  });
+
+  it("does not enqueue a normalization job when save() throws, and error accounting is unchanged", async () => {
+    const failingStore: import("../../../src/storage/IRawResultStore.js").IRawResultStore = {
+      async save(): Promise<boolean> {
+        throw new Error("simulated save failure");
+      },
+      async fetch() {
+        return null;
+      },
+      async fetchById() {
+        return null;
+      },
+      async saveAndGetId() {
+        throw new Error("simulated save failure");
+      },
+    };
+
+    const provider = makeMockProvider([makeProviderResult(1), makeProviderResult(2)]);
+    const runner = new DiscoveryRunner(provider, failingStore, normalizationQueue);
+
+    const stats = await runner.run(makeResolvedQuery());
+
+    expect(stats.resultsCollected).toBe(2);
+    expect(stats.resultsSaved).toBe(0);
+    expect(stats.jobsEnqueued).toBe(0);
+    expect(stats.errors).toBe(2);
+
+    const depth = await normalizationQueue.depth();
+    expect(depth.ok ? depth.value : -1).toBe(0);
+  });
+
   it("does not hold a lifecycle reference � constructor takes only 3 args", () => {
     const provider = makeMockProvider([]);
     // If a 4th arg were required this would be a type error
@@ -311,5 +374,110 @@ describe("DiscoveryRunner", () => {
 
     const finalRun = await runStore.getById(runId);
     expect(finalRun?.status).toBe("complete");
+  });
+
+  // -------------------------------------------------------------------------
+  // Section 15 milestone: proposal-production enqueue wiring
+  // -------------------------------------------------------------------------
+
+  it("does not enqueue a proposal-production job when no queue is provided", async () => {
+    const provider = makeMockProvider([makeProviderResult(1)]);
+    const runner = new DiscoveryRunner(provider, rawResultStore, normalizationQueue);
+
+    const stats = await runner.run(makeResolvedQuery());
+
+    expect(stats.resultsSaved).toBe(1);
+    expect(stats.jobsEnqueued).toBe(1);
+    expect(stats.errors).toBe(0);
+  });
+
+  it("enqueues a proposal-production job carrying the assigned UUID when isNew and a queue is provided", async () => {
+    const proposalProductionQueue = new InMemoryQueue<ProposalProductionJobPayload>(
+      "proposal-production",
+    );
+    const result1 = makeProviderResult(1);
+    const provider = makeMockProvider([result1]);
+    const runner = new DiscoveryRunner(
+      provider,
+      rawResultStore,
+      normalizationQueue,
+      proposalProductionQueue,
+    );
+
+    await runner.run(makeResolvedQuery());
+
+    const depth = await proposalProductionQueue.depth();
+    expect(depth.ok ? depth.value : -1).toBe(1);
+
+    const dequeued = await proposalProductionQueue.dequeue();
+    expect(dequeued.ok).toBe(true);
+    if (!dequeued.ok || !dequeued.value) return;
+
+    const assignedId = rawResultStore.getAssignedId(result1);
+    expect(assignedId).not.toBeNull();
+    expect(dequeued.value.payload.rawResultId).toBe(assignedId);
+    expect(dequeued.value.payload.runId).toBe(TEST_RUN_ID);
+    expect(dequeued.value.payload.queryId).toBe(TEST_QUERY_ID);
+    expect(dequeued.value.payload.providerId).toBe("google-maps");
+  });
+
+  it("does not enqueue a second proposal-production job for a rediscovered result within the same run", async () => {
+    const proposalProductionQueue = new InMemoryQueue<ProposalProductionJobPayload>(
+      "proposal-production",
+    );
+    const dup = makeProviderResult(1);
+    const provider = makeMockProvider([dup, dup, makeProviderResult(2)]);
+    const runner = new DiscoveryRunner(
+      provider,
+      rawResultStore,
+      normalizationQueue,
+      proposalProductionQueue,
+    );
+
+    const stats = await runner.run(makeResolvedQuery());
+
+    expect(stats.resultsSaved).toBe(2);
+
+    const depth = await proposalProductionQueue.depth();
+    expect(depth.ok ? depth.value : -1).toBe(2);
+  });
+
+  it("does not increment DiscoveryStats.errors when the proposal-production enqueue fails, and normalization is unaffected", async () => {
+    const failingProposalQueue: IQueue<ProposalProductionJobPayload> = {
+      name: "proposal-production",
+      async enqueue() {
+        throw new Error("simulated proposal-production enqueue failure");
+      },
+      async dequeue() {
+        return { ok: true, value: null };
+      },
+      async ack() {
+        return { ok: true, value: undefined };
+      },
+      async nack() {
+        return { ok: true, value: "retried" as const };
+      },
+      async depth() {
+        return { ok: true, value: 0 };
+      },
+    };
+
+    const provider = makeMockProvider([makeProviderResult(1), makeProviderResult(2)]);
+    const runner = new DiscoveryRunner(
+      provider,
+      rawResultStore,
+      normalizationQueue,
+      failingProposalQueue,
+    );
+
+    const stats = await runner.run(makeResolvedQuery());
+
+    expect(stats.resultsCollected).toBe(2);
+    expect(stats.resultsSaved).toBe(2);
+    expect(stats.jobsEnqueued).toBe(2);
+    expect(stats.errors).toBe(0);
+
+    const normDepth = await normalizationQueue.depth();
+    expect(normDepth.ok ? normDepth.value : -1).toBe(2);
   });
 });
