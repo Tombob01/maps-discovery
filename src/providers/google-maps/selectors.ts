@@ -189,6 +189,25 @@ export const SELECTORS = {
     fragility: "MEDIUM",
   },
 
+  /**
+   * Services section container on the business detail panel.
+   * Contains a comma-separated list of services offered by the business,
+   * e.g. "Drain cleaning, Tap installation, Tap repair".
+   *
+   * Confirmed from live DOM inspection (July 2026).
+   * The jsrenderer attribute identifies this component type in Google's
+   * rendering framework. More stable than class names but not a public
+   * contract. Extraction also confirms a <b>Services:</b> label as a
+   * secondary anchor before reading the text content.
+   *
+   * Absent on businesses that have not configured a services list.
+   */
+  servicesSection: {
+    selector: '[jsrenderer="hYChMd"]',
+    description: "Services section container on the business detail panel",
+    fragility: "MEDIUM",
+  },
+
   // ── Anti-bot / error states ───────────────────────────────────────────────
 
   /**

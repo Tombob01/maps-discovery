@@ -50,6 +50,7 @@ const HEADERS = [
   "run_id",
   "query_id",
   "google_place_id",
+  "services",
 ] as const;
 
 function toRow(r: BusinessRecord): string {
@@ -78,6 +79,7 @@ function toRow(r: BusinessRecord): string {
     csvField(r.runId as string),
     csvField(r.queryId as string),
     csvField(r.externalIds.googlePlaceId ?? null),
+    csvField(r.services ? r.services.join("|") : null),
   ].join(",");
 }
 

@@ -153,6 +153,13 @@ export interface BusinessRecord {
   readonly hours: BusinessHours | null;
   readonly priceLevel: PriceLevel | null;
 
+  /**
+   * Services offered by the business, as listed on the provider page.
+   * e.g. ["Drain cleaning", "Leak detection", "Pipe repair"]
+   * Null if the provider did not surface a services section for this listing.
+   */
+  readonly services: readonly string[] | null;
+
   // ── Provenance ───────────────────────────────────────────────────────────
 
   /** ID of the provider that produced the raw result. e.g. "google-maps" */

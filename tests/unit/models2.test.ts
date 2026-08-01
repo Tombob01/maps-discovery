@@ -1,10 +1,10 @@
-﻿/**
+/**
  * Core domain models test suite.
  * Covers: BusinessRecord shape and draft mutability, ProviderResult shape,
  * Job payload shapes, QueueName exhaustiveness, StageResult semantics,
  * StageCheckpoint fields, Run / RunStats structure, and ExternalIdMap.
  *
- * These are structural / contract tests â€” they verify the shapes
+ * These are structural / contract tests — they verify the shapes
  * can be constructed correctly, fields have the right types, and
  * optional fields behave as documented.
  */
@@ -38,7 +38,7 @@ import type {
 import type { DayOfWeek } from "../../src/core/types/common.js";
 
 // ---------------------------------------------------------------------------
-// Helpers â€” construct minimal valid instances
+// Helpers — construct minimal valid instances
 // ---------------------------------------------------------------------------
 
 function makeAddress() {
@@ -78,6 +78,7 @@ function makeBusinessRecord(): BusinessRecord {
     collectedAt: new Date("2024-01-15T10:00:00Z"),
     runId: "run-1" as import("../../src/core/types/common.js").RunID,
     queryId: "query-1" as import("../../src/core/types/common.js").QueryID,
+    services: null,
     normalizationStatus: "complete",
     deduplicationStatus: "unique",
     exportStatus: "pending",
@@ -105,7 +106,7 @@ function makeProviderResult(): ProviderResult {
 // BusinessRecord
 // ---------------------------------------------------------------------------
 
-describe("BusinessRecord â€” required fields", () => {
+describe("BusinessRecord — required fields", () => {
   it("can be constructed with all required fields", () => {
     const r = makeBusinessRecord();
     expect(r.id).toBe("biz-1");
@@ -166,7 +167,7 @@ describe("BusinessRecord â€” required fields", () => {
     expect(r.hours).toBeNull();
   });
 
-  it("priceLevel accepts all valid values (1â€“4)", () => {
+  it("priceLevel accepts all valid values (1–4)", () => {
     ([1, 2, 3, 4] as const).forEach((level) => {
       const r: BusinessRecord = { ...makeBusinessRecord(), priceLevel: level };
       expect(r.priceLevel).toBe(level);
@@ -190,10 +191,10 @@ describe("BusinessRecord â€” required fields", () => {
 });
 
 // ---------------------------------------------------------------------------
-// BusinessRecordDraft â€” mutable version
+// BusinessRecordDraft — mutable version
 // ---------------------------------------------------------------------------
 
-describe("BusinessRecordDraft â€” mutability", () => {
+describe("BusinessRecordDraft — mutability", () => {
   it("draft can mutate status fields (compile-time verified at runtime)", () => {
     const draft: BusinessRecordDraft = { ...makeBusinessRecord() };
     // These assignments would fail TypeScript on BusinessRecord (readonly),
@@ -353,7 +354,7 @@ describe("PersistedRawResult", () => {
 // QueueName exhaustiveness
 // ---------------------------------------------------------------------------
 
-describe("QueueName â€” exhaustiveness", () => {
+describe("QueueName — exhaustiveness", () => {
   const ALL_QUEUE_NAMES: QueueName[] = [
     "query:generate",
     "query:expand",
@@ -372,7 +373,7 @@ describe("QueueName â€” exhaustiveness", () => {
   });
 
   it("StageName is the same set as QueueName", () => {
-    // StageName = QueueName â€” verified by the type alias, confirmed at runtime
+    // StageName = QueueName — verified by the type alias, confirmed at runtime
     const stageNames: StageName[] = [...ALL_QUEUE_NAMES];
     expect(stageNames).toHaveLength(6);
   });

@@ -116,6 +116,7 @@ export interface RawFields {
   readonly priceLevel?: number;
   readonly categories?: readonly string[];
   readonly hoursRaw?: readonly string[];
+  readonly services?: readonly string[];
   readonly externalIds?: Readonly<Record<string, string>>;
   readonly sourceUrl?: string;
 }

@@ -79,6 +79,7 @@ function makeBusinessRecord(): BusinessRecord {
     collectedAt: new Date("2024-01-15T10:00:00Z"),
     runId: "run-1" as import("../../src/core/types/common.js").RunID,
     queryId: "query-1" as import("../../src/core/types/common.js").QueryID,
+    services: null,
     normalizationStatus: "complete",
     deduplicationStatus: "unique",
     exportStatus: "pending",
@@ -182,6 +183,16 @@ describe("BusinessRecord — required fields", () => {
   it("sourceUrl accepts null", () => {
     const r: BusinessRecord = { ...makeBusinessRecord(), sourceUrl: null };
     expect(r.sourceUrl).toBeNull();
+  });
+
+  it("services accepts null", () => {
+    const r: BusinessRecord = { ...makeBusinessRecord(), services: null };
+    expect(r.services).toBeNull();
+  });
+
+  it("services accepts a string array", () => {
+    const r: BusinessRecord = { ...makeBusinessRecord(), services: Object.freeze(["Drain cleaning", "Leak detection"]) };
+    expect(r.services).toEqual(["Drain cleaning", "Leak detection"]);
   });
 
   it("categories is a ReadonlyArray", () => {

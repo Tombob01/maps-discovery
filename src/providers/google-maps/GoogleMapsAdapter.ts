@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @module providers/google-maps/GoogleMapsAdapter
  *
  * Extracts structured raw data from Google Maps DOM.

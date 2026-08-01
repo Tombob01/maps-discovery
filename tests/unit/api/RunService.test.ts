@@ -102,6 +102,7 @@ function makeRecord(overrides: Partial<BusinessRecord> = {}): BusinessRecord {
     queryId: "q-1" as QueryID,
     normalizationStatus: "complete",
     deduplicationStatus: "unique",
+    services: null,
     exportStatus: "pending",
     ...overrides,
   };

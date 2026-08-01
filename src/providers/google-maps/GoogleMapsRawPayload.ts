@@ -82,6 +82,14 @@ export interface GoogleMapsRawPayload {
    */
   priceLevelText?: string;
 
+  /**
+   * Services offered by the business, as listed in the Services section
+   * of the Google Maps detail panel.
+   * e.g. ["Drain cleaning", "Tap installation", "Tap repair"]
+   * Absent if the business has no Services section configured.
+   */
+  services?: string[];
+
   // ── Hours ─────────────────────────────────────────────────────────────────
 
   /**

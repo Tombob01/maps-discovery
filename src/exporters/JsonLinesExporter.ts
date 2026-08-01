@@ -41,6 +41,7 @@ interface ExportedRecord {
   runId: string;
   queryId: string;
   googlePlaceId: string | null;
+  services: string[] | null;
 }
 
 function toExportShape(r: BusinessRecord): ExportedRecord {
@@ -69,6 +70,7 @@ function toExportShape(r: BusinessRecord): ExportedRecord {
     runId: r.runId as string,
     queryId: r.queryId as string,
     googlePlaceId: r.externalIds.googlePlaceId ?? null,
+    services: r.services ? [...r.services] : null,
   };
 }
 

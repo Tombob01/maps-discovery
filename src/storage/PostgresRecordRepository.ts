@@ -68,6 +68,7 @@ interface BusinessRecordRow extends Row {
   geo_lng: number | null;
   hours_raw: string[] | null;
   hours_parsed: DayHours[] | null;
+  services: string[] | null;
   source_url: string | null;
   collected_at: Date;
   normalization_status: string;
@@ -119,6 +120,7 @@ function rowToRecord(row: BusinessRecordRow): BusinessRecord {
     hours,
     priceLevel: row.price_level as PriceLevel | null,
     sourceProvider: row.source_provider,
+    services: row.services ?? null,
     sourceUrl: row.source_url,
     collectedAt: row.collected_at,
     runId: row.run_id as RunID,
@@ -160,6 +162,7 @@ function recordToParams(r: BusinessRecord): unknown[] {
     r.geo?.lng ?? null,
     r.hours?.raw ?? null,
     r.hours?.parsed ? JSON.stringify(r.hours.parsed) : null,
+    r.services ? [...r.services] : null,
     r.sourceUrl ?? null,
     r.collectedAt,
     r.normalizationStatus,
@@ -179,13 +182,13 @@ const INSERT_COLUMNS = `
   address_raw, address_street, address_city, address_state,
   address_postal_code, address_country, address_country_code,
   geo_lat, geo_lng,
-  hours_raw, hours_parsed,
+  hours_raw, hours_parsed, services,
   source_url, collected_at,
   normalization_status, deduplication_status, export_status
 `.trim();
 
-// 25 columns per row
-const COLUMNS_PER_ROW = 33;
+// 34 columns per row
+const COLUMNS_PER_ROW = 34;
 
 /** Build "$1,$2,...$25" placeholder string for one row, offset by startIdx. */
 function rowPlaceholders(startIdx: number): string {
@@ -244,7 +247,7 @@ export class PostgresRecordRepository implements IRecordStore {
        VALUES ${valueClauses.join(", ")}
        ON CONFLICT (fingerprint) DO NOTHING`,
       params,
-    );
+    );
     const actualInserted = pgResult.rowCount ?? 0;
     return actualInserted;
   }

@@ -52,6 +52,7 @@ function makeRecord(overrides: Partial<BusinessRecord> = {}): BusinessRecord {
     collectedAt: new Date("2024-01-15T10:00:00Z"),
     runId: "run-1" as RunID,
     queryId: "query-1" as QueryID,
+    services: null,
     normalizationStatus: "complete",
     deduplicationStatus: "unique",
     exportStatus: "pending",
@@ -130,6 +131,21 @@ describe("JsonLinesExporter", () => {
     const parsed = JSON.parse(content.trim().split("\n")[0]!);
     expect(parsed.lat).toBe(6.5244);
     expect(parsed.lng).toBe(3.3792);
+  });
+
+  it("includes services as null when not set", async () => {
+    await exporter.export([makeRecord()], "/tmp/out.jsonl");
+    const content = writer.store.get("/tmp/out.jsonl") ?? "";
+    const parsed = JSON.parse(content.trim().split("\n")[0]!);
+    expect(parsed.services).toBeNull();
+  });
+
+  it("includes services array when present", async () => {
+    const record = makeRecord({ services: Object.freeze(["Drain cleaning", "Leak detection"]) });
+    await exporter.export([record], "/tmp/out.jsonl");
+    const content = writer.store.get("/tmp/out.jsonl") ?? "";
+    const parsed = JSON.parse(content.trim().split("\n")[0]!);
+    expect(parsed.services).toEqual(["Drain cleaning", "Leak detection"]);
   });
 
   it("handles null geo (lat/lng null)", async () => {
@@ -260,6 +276,28 @@ describe("CsvExporter", () => {
     // header + 4 data rows + trailing newline = split gives 6 entries
     const lines = content.split("\n").filter((l) => l.trim() !== "");
     expect(lines).toHaveLength(5); // 1 header + 4 data
+  });
+
+  it("includes services column in header", async () => {
+    await exporter.export([makeRecord()], "/tmp/out.csv");
+    const content = writer.store.get("/tmp/out.csv") ?? "";
+    const header = content.split("\n")[0] ?? "";
+    expect(header).toContain("services");
+  });
+
+  it("services column is empty when null", async () => {
+    await exporter.export([makeRecord({ services: null })], "/tmp/out.csv");
+    const content = writer.store.get("/tmp/out.csv") ?? "";
+    const dataRow = content.split("\n")[1] ?? "";
+    const fields = dataRow.split(",");
+    expect(fields[fields.length - 1]?.trim()).toBe("");
+  });
+
+  it("services column joins values with pipe separator", async () => {
+    const record = makeRecord({ services: Object.freeze(["Drain cleaning", "Leak detection"]) });
+    await exporter.export([record], "/tmp/out.csv");
+    const content = writer.store.get("/tmp/out.csv") ?? "";
+    expect(content).toContain("Drain cleaning|Leak detection");
   });
 
   it("joins multiple categories with pipe separator", async () => {

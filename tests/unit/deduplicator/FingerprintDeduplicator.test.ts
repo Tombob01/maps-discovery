@@ -52,6 +52,7 @@ function makeRecord(overrides: Partial<BusinessRecord> = {}): BusinessRecord {
     collectedAt: new Date("2024-01-15T10:00:00Z"),
     runId: "run-1" as RunID,
     queryId: "query-1" as QueryID,
+    services: null,
     normalizationStatus: "complete",
     deduplicationStatus: "pending",
     exportStatus: "pending",
