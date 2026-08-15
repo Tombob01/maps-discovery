@@ -19,6 +19,7 @@ import type {
   ExportFormat,
   ExpandedSuggestion,
   ExpansionStrategy,
+  SeedStatus,
 } from '../types/ui.js';
 
 // ---------------------------------------------------------------------------
@@ -99,6 +100,7 @@ interface BackendRun {
   location: string;
   startedAt: string;
   currentSeed?: string | null;
+  seeds?: SeedStatus[] | null;
   completedAt: string | null;
   stats: {
     queriesGenerated: number;
@@ -156,6 +158,7 @@ function toUIRun(backend: BackendRun): Run {
       exported: backend.stats.recordsExported ?? 0,
     },
     ...(backend.currentSeed !== undefined ? { currentSeed: backend.currentSeed } : {}),
+    ...(backend.seeds !== undefined ? { seeds: backend.seeds } : {}),
   };
 }
 
