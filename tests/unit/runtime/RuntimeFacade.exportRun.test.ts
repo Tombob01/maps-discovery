@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @module tests/unit/runtime/RuntimeFacade.exportRun
  */
 
@@ -32,6 +32,7 @@ function makeFacade(runService: RunService): RuntimeFacade {
     {} as QueryEngine,
     {} as PassthroughGeoResolver,
     {} as ResolvedQueryFactory,
+    {} as unknown as import("../../../src/storage/RunLifecycleService.js").RunLifecycleService,
   );
 }
 

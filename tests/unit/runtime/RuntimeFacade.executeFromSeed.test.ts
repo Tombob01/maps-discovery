@@ -126,6 +126,7 @@ describe("RuntimeFacade.executeFromSeed", () => {
       engine,
       geoResolver,
       new ResolvedQueryFactory(),
+      {} as unknown as import("../../../src/storage/RunLifecycleService.js").RunLifecycleService,
     );
 
     await facade.executeFromSeed({
@@ -154,6 +155,7 @@ describe("RuntimeFacade.executeFromSeed", () => {
       engine,
       geoResolver,
       new ResolvedQueryFactory(),
+      {} as unknown as import("../../../src/storage/RunLifecycleService.js").RunLifecycleService,
     );
 
     await facade.executeFromSeed({
@@ -179,6 +181,7 @@ describe("RuntimeFacade.executeFromSeed", () => {
       engine,
       geoResolver,
       new ResolvedQueryFactory(),
+      {} as unknown as import("../../../src/storage/RunLifecycleService.js").RunLifecycleService,
     );
 
     const result = await facade.executeFromSeed({
@@ -201,6 +204,7 @@ describe("RuntimeFacade.executeFromSeed", () => {
       engine,
       geoResolver,
       new ResolvedQueryFactory(),
+      {} as unknown as import("../../../src/storage/RunLifecycleService.js").RunLifecycleService,
     );
 
     await expect(
@@ -225,6 +229,7 @@ describe("RuntimeFacade.executeFromSeed", () => {
       engine,
       geoResolver,
       new ResolvedQueryFactory(),
+      {} as unknown as import("../../../src/storage/RunLifecycleService.js").RunLifecycleService,
     );
 
     await expect(
@@ -249,6 +254,7 @@ describe("RuntimeFacade.executeFromSeed", () => {
       engine,
       geoResolver,
       new ResolvedQueryFactory(),
+      {} as unknown as import("../../../src/storage/RunLifecycleService.js").RunLifecycleService,
     );
 
     // "nigeria" resolves via country-name lookup in PassthroughGeoResolver
@@ -278,6 +284,7 @@ describe("RuntimeFacade.executeFromSeed", () => {
       engine,
       geoResolver,
       new ResolvedQueryFactory(),
+      {} as unknown as import("../../../src/storage/RunLifecycleService.js").RunLifecycleService,
     );
 
     await facade.executeFromSeed({

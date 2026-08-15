@@ -28,6 +28,7 @@ function makeMockFacade(): RuntimeFacade {
   return {
     expandKeyword: vi.fn(),
     createRun: vi.fn(),
+    startRun: vi.fn().mockResolvedValue(undefined),
     executeRun: vi.fn(),
     executeFromSeed: vi.fn().mockResolvedValue({
       discovery: { resultsSaved: 0, jobsEnqueued: 0 },

@@ -166,6 +166,7 @@ export function createServices(
     queryEngine,
     geoResolver,
     resolvedQueryFactory,
+    lifecycle,
   );
 
   const shutdown = async (): Promise<void> => {

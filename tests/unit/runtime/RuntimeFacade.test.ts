@@ -129,6 +129,16 @@ function makeMockExecutor(result: ExecutionSummary | Error = STUB_SUMMARY): Runt
   } as unknown as RuntimeExecutor;
 }
 
+function makeMockLifecycle(): import("../../../src/storage/RunLifecycleService.js").RunLifecycleService {
+  return {
+    start: vi.fn().mockResolvedValue(undefined),
+    complete: vi.fn().mockResolvedValue(undefined),
+    fail: vi.fn().mockResolvedValue(undefined),
+    incrementStats: vi.fn().mockResolvedValue(undefined),
+    persistRecords: vi.fn().mockResolvedValue(0),
+  } as unknown as import("../../../src/storage/RunLifecycleService.js").RunLifecycleService;
+}
+
 // ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
@@ -136,7 +146,7 @@ function makeMockExecutor(result: ExecutionSummary | Error = STUB_SUMMARY): Runt
 describe("RuntimeFacade (unit)", () => {
   it("createRun delegates to runService and returns runId + status", async () => {
     const runService = makeMockRunService();
-    const facade = new RuntimeFacade(runService, makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
+    const facade = new RuntimeFacade(runService, makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory, makeMockLifecycle());
 
     const result = await facade.createRun({ niche: "plumbers", location: "Lagos" });
 
@@ -149,14 +159,14 @@ describe("RuntimeFacade (unit)", () => {
     const runService = makeMockRunService({
       createRun: vi.fn().mockResolvedValue({ ok: false, error: { code: "VALIDATION_ERROR", message: "niche is required" } }),
     });
-    const facade = new RuntimeFacade(runService, makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
+    const facade = new RuntimeFacade(runService, makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory, makeMockLifecycle());
 
     await expect(facade.createRun({ niche: "", location: "Lagos" })).rejects.toThrow("niche is required");
   });
 
   it("executeRun delegates to runtimeExecutor and returns summary unchanged", async () => {
     const executor = makeMockExecutor(STUB_SUMMARY);
-    const facade = new RuntimeFacade(makeMockRunService(), executor, {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
+    const facade = new RuntimeFacade(makeMockRunService(), executor, {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory, makeMockLifecycle());
     const opts = { provider: makeMockProvider(), runId: TEST_RUN_ID, query: makeResolvedQuery() };
 
     const summary = await facade.executeRun(opts);
@@ -166,7 +176,7 @@ describe("RuntimeFacade (unit)", () => {
   });
 
   it("executeRun propagates executor errors", async () => {
-    const facade = new RuntimeFacade(makeMockRunService(), makeMockExecutor(new Error("exec failed")), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
+    const facade = new RuntimeFacade(makeMockRunService(), makeMockExecutor(new Error("exec failed")), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory, makeMockLifecycle());
 
     await expect(
       facade.executeRun({ provider: makeMockProvider(), runId: TEST_RUN_ID, query: makeResolvedQuery() }),
@@ -174,7 +184,7 @@ describe("RuntimeFacade (unit)", () => {
   });
 
   it("getRun returns RunView when found", async () => {
-    const facade = new RuntimeFacade(makeMockRunService(), makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
+    const facade = new RuntimeFacade(makeMockRunService(), makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory, makeMockLifecycle());
     const run = await facade.getRun(TEST_RUN_ID);
     expect(run).not.toBeNull();
     expect(run?.id).toBe(TEST_RUN_ID);
@@ -185,13 +195,13 @@ describe("RuntimeFacade (unit)", () => {
     const runService = makeMockRunService({
       getRun: vi.fn().mockResolvedValue({ ok: false, error: { code: "NOT_FOUND", message: "not found" } }),
     });
-    const facade = new RuntimeFacade(runService, makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
+    const facade = new RuntimeFacade(runService, makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory, makeMockLifecycle());
     const run = await facade.getRun("nonexistent");
     expect(run).toBeNull();
   });
 
   it("listRecords delegates and returns RecordPage", async () => {
-    const facade = new RuntimeFacade(makeMockRunService(), makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
+    const facade = new RuntimeFacade(makeMockRunService(), makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory, makeMockLifecycle());
     const page = await facade.listRecords(TEST_RUN_ID, 1, 20);
     expect(page.items).toEqual([]);
     expect(page.total).toBe(0);
@@ -201,12 +211,32 @@ describe("RuntimeFacade (unit)", () => {
 
   it("facade holds no state between calls", async () => {
     const runService = makeMockRunService();
-    const facade = new RuntimeFacade(runService, makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
+    const facade = new RuntimeFacade(runService, makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory, makeMockLifecycle());
 
     await facade.createRun({ niche: "plumbers", location: "Lagos" });
     await facade.createRun({ niche: "electricians", location: "Abuja" });
 
     expect(runService.createRun).toHaveBeenCalledTimes(2);
+  });
+
+  it("startRun delegates to lifecycle.start()", async () => {
+    const lifecycle = makeMockLifecycle();
+    const facade = new RuntimeFacade(makeMockRunService(), makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory, lifecycle);
+
+    await facade.startRun(TEST_RUN_ID);
+
+    expect(lifecycle.start).toHaveBeenCalledWith(TEST_RUN_ID);
+    expect(lifecycle.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("startRun does not call complete or fail", async () => {
+    const lifecycle = makeMockLifecycle();
+    const facade = new RuntimeFacade(makeMockRunService(), makeMockExecutor(), {} as KeywordExpansionService, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory, lifecycle);
+
+    await facade.startRun(TEST_RUN_ID);
+
+    expect(lifecycle.complete).not.toHaveBeenCalled();
+    expect(lifecycle.fail).not.toHaveBeenCalled();
   });
 });
 
@@ -336,5 +366,96 @@ describe("RuntimeFacade (integration)", () => {
     const page = await facade.listRecords(runId);
     expect(page.total).toBeGreaterThanOrEqual(1);
     expect(page.items.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("RuntimeFacade.executeFromSeed - batch info threading (Slice B)", () => {
+  function makeMockQueryEngineForSeed(): QueryEngine {
+    const generatedQuery = {
+      id: "gq-1",
+      runId: TEST_RUN_ID,
+      parentId: null,
+      rawText: "plumbers Lagos",
+      niche: "plumbers",
+      providerId: "google-maps",
+      generatedByStrategies: ["seed"],
+      queryHash: "hash-1",
+      lifecycleState: "canonicalized",
+      status: "pending",
+      createdAt: new Date(),
+      geoTarget: { displayName: "Lagos", country: "Nigeria" },
+    } as unknown as import("../../../src/core/models/Query.js").GeneratedQuery;
+    return {
+      generate: vi.fn().mockResolvedValue({ ok: true, value: [generatedQuery] }),
+    } as unknown as QueryEngine;
+  }
+
+  function makeMockGeoResolverForSeed(): IGeoResolver {
+    return {
+      resolve: vi.fn().mockResolvedValue({
+        ok: true,
+        value: {
+          displayName: "Lagos",
+          country: "Nigeria",
+          resolvedCoordinates: { lat: 6.5244, lng: 3.3792 },
+        },
+      }),
+    } as unknown as IGeoResolver;
+  }
+
+  function makeMockResolvedQueryFactoryForSeed(): ResolvedQueryFactory {
+    return {
+      create: vi.fn().mockReturnValue(makeResolvedQuery()),
+    } as unknown as ResolvedQueryFactory;
+  }
+
+  it("passes isLastSeed and batchFailed through to runtimeExecutor.execute when provided", async () => {
+    const executor = makeMockExecutor(STUB_SUMMARY);
+    const facade = new RuntimeFacade(
+      makeMockRunService(),
+      executor,
+      {} as KeywordExpansionService,
+      makeMockQueryEngineForSeed(),
+      makeMockGeoResolverForSeed(),
+      makeMockResolvedQueryFactoryForSeed(),
+      makeMockLifecycle(),
+    );
+
+    await facade.executeFromSeed({
+      provider: makeMockProvider(),
+      runId: TEST_RUN_ID,
+      keyword: "plumbers",
+      location: "Lagos, Nigeria",
+      isLastSeed: false,
+      batchFailed: true,
+    });
+
+    expect(executor.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ isLastSeed: false, batchFailed: true }),
+    );
+  });
+
+  it("omits isLastSeed/batchFailed keys entirely when not provided (backward compatible)", async () => {
+    const executor = makeMockExecutor(STUB_SUMMARY);
+    const facade = new RuntimeFacade(
+      makeMockRunService(),
+      executor,
+      {} as KeywordExpansionService,
+      makeMockQueryEngineForSeed(),
+      makeMockGeoResolverForSeed(),
+      makeMockResolvedQueryFactoryForSeed(),
+      makeMockLifecycle(),
+    );
+
+    await facade.executeFromSeed({
+      provider: makeMockProvider(),
+      runId: TEST_RUN_ID,
+      keyword: "plumbers",
+      location: "Lagos, Nigeria",
+    });
+
+    const callArg = (executor.execute as ReturnType<typeof vi.fn>).mock.calls[0]![0] as Record<string, unknown>;
+    expect(callArg).not.toHaveProperty("isLastSeed");
+    expect(callArg).not.toHaveProperty("batchFailed");
   });
 });

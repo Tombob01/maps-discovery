@@ -21,6 +21,7 @@ function makeMockFacade(): RuntimeFacade {
       ],
     }),
     createRun: vi.fn().mockResolvedValue({ runId: "run-test-001", status: "pending" }),
+    startRun: vi.fn().mockResolvedValue(undefined),
     executeRun: vi.fn().mockResolvedValue({
       discovery: { resultsSaved: 0, jobsEnqueued: 0 },
       normalization: {
@@ -380,6 +381,14 @@ describe("POST /api/runs/:id/execute � seed failure isolation", () => {
     expect(executionOrder).toEqual(["plumbers", "drain cleaning", "water heater repair"]);
     // facade called three times despite seed #2 throwing
     expect(facade.executeFromSeed).toHaveBeenCalledTimes(3);
+
+    // Slice D: isLastSeed reflects batch position regardless of failures,
+    // and batchFailed becomes true for the final seed once an earlier
+    // seed has failed (Option II).
+    const calls = (facade.executeFromSeed as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls[0]![0]).toEqual(expect.objectContaining({ isLastSeed: false, batchFailed: false }));
+    expect(calls[1]![0]).toEqual(expect.objectContaining({ isLastSeed: false, batchFailed: false }));
+    expect(calls[2]![0]).toEqual(expect.objectContaining({ isLastSeed: true, batchFailed: true }));
   });
 });
 
@@ -428,6 +437,99 @@ describe("POST /api/runs/:id/execute � concurrency guard", () => {
     // Second request should also succeed
     const second = await app.request("/api/runs/run-001/execute", { method: "POST", headers: { "Content-Type": "application/json" }, body });
     expect(second.status).toBe(202);
+  });
+});
+
+describe("POST /api/runs/:id/execute — lifecycle/batch wiring (Slice D)", () => {
+  it("calls facade.startRun before the first executeFromSeed call", async () => {
+    const facade = makeMockFacade();
+    const order: string[] = [];
+    (facade.startRun as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      order.push("startRun");
+    });
+    (facade.executeFromSeed as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      order.push("executeFromSeed");
+      return {
+        discovery: { resultsSaved: 0, jobsEnqueued: 0 },
+        normalization: {
+          queriesGenerated: 0, queriesDispatched: 0, rawResultsFound: 0,
+          recordsNormalized: 0, recordsUnique: 0, recordsDuplicate: 0,
+          recordsExported: 0, errors: 0,
+        },
+      };
+    });
+
+    const app = createServer(facade);
+    await app.request("/api/runs/run-d-001/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "mock", seeds: [{ keyword: "plumbers", location: "Austin TX" }] }),
+    });
+    await new Promise(r => setTimeout(r, 20));
+
+    expect(order).toEqual(["startRun", "executeFromSeed"]);
+    expect(facade.startRun).toHaveBeenCalledWith("run-d-001");
+  });
+
+  it("passes isLastSeed false to intermediate seeds and true to the final seed", async () => {
+    const facade = makeMockFacade();
+    const app = createServer(facade);
+
+    await app.request("/api/runs/run-d-002/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "mock",
+        seeds: [
+          { keyword: "plumbers", location: "Austin TX" },
+          { keyword: "electricians", location: "Austin TX" },
+          { keyword: "roofers", location: "Austin TX" },
+        ],
+      }),
+    });
+    await new Promise(r => setTimeout(r, 30));
+
+    const calls = (facade.executeFromSeed as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toHaveLength(3);
+    expect(calls[0]![0]).toEqual(expect.objectContaining({ isLastSeed: false }));
+    expect(calls[1]![0]).toEqual(expect.objectContaining({ isLastSeed: false }));
+    expect(calls[2]![0]).toEqual(expect.objectContaining({ isLastSeed: true }));
+  });
+
+  it("passes batchFailed false to the final seed on a fully successful batch", async () => {
+    const facade = makeMockFacade();
+    const app = createServer(facade);
+
+    await app.request("/api/runs/run-d-003/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "mock",
+        seeds: [
+          { keyword: "plumbers", location: "Austin TX" },
+          { keyword: "electricians", location: "Austin TX" },
+        ],
+      }),
+    });
+    await new Promise(r => setTimeout(r, 20));
+
+    const calls = (facade.executeFromSeed as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls[1]![0]).toEqual(expect.objectContaining({ isLastSeed: true, batchFailed: false }));
+  });
+
+  it("a single-seed batch receives isLastSeed true and batchFailed false", async () => {
+    const facade = makeMockFacade();
+    const app = createServer(facade);
+
+    await app.request("/api/runs/run-d-004/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "mock", seeds: [{ keyword: "plumbers", location: "Austin TX" }] }),
+    });
+    await new Promise(r => setTimeout(r, 20));
+
+    const calls = (facade.executeFromSeed as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls[0]![0]).toEqual(expect.objectContaining({ isLastSeed: true, batchFailed: false }));
   });
 });
 

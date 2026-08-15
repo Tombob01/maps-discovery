@@ -43,6 +43,14 @@ export interface ExecuteOptions {
   readonly runId: RunID;
   readonly query: ResolvedQuery;
   readonly discoveryOptions?: DiscoveryOptions;
+  /**
+   * Additive, optional batch-position information, forwarded unchanged
+   * to RunCoordinator.execute(). See RunCoordinatorBatchOptions.
+   * Omitted -> RunCoordinator.execute() is called with a single
+   * argument, preserving exact prior behavior.
+   */
+  readonly isLastSeed?: boolean;
+  readonly batchFailed?: boolean;
 }
 
 export interface ExecutionSummary {
@@ -71,7 +79,7 @@ export class RuntimeExecutor {
    * Propagates coordinator exceptions without catching.
    */
   async execute(opts: ExecuteOptions): Promise<ExecutionSummary> {
-    const { provider, runId, query, discoveryOptions } = opts;
+    const { provider, runId, query, discoveryOptions, isLastSeed, batchFailed } = opts;
     const providerId = provider.id;
     const startedAt = Date.now();
 
@@ -104,7 +112,14 @@ export class RuntimeExecutor {
     let normalization: RunStats;
     try {
       const normStart = Date.now();
-      normalization = await this.coordinator.execute(runId);
+      const hasBatchInfo = isLastSeed !== undefined || batchFailed !== undefined;
+      const batchOpts = {
+        ...(isLastSeed !== undefined ? { isLastSeed } : {}),
+        ...(batchFailed !== undefined ? { batchFailed } : {}),
+      };
+      normalization = hasBatchInfo
+        ? await this.coordinator.execute(runId, batchOpts)
+        : await this.coordinator.execute(runId);
       this._emit({
         type: "normalization_completed",
         runId,

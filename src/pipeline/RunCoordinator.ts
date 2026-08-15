@@ -57,6 +57,37 @@ export interface RunCoordinatorOptions {
 // RunCoordinator
 // ---------------------------------------------------------------------------
 
+/**
+ * Additive, optional batch-position information for execute().
+ *
+ * Added to support multi-seed batches (a single runId driven through
+ * multiple sequential DiscoveryRunner + RunCoordinator.execute() calls,
+ * one per seed -- see server.ts's /execute loop). When omitted entirely,
+ * execute() behaves exactly as it always has: every call performs the
+ * terminal lifecycle transition (complete or failed).
+ */
+export interface RunCoordinatorBatchOptions {
+  /**
+   * Whether this call is the LAST seed in a multi-seed batch.
+   * - true or omitted (default): execute() performs the terminal
+   *   transition (complete/fail) exactly as before.
+   * - false: execute() persists stats/records normally but does NOT
+   *   transition the run's status or completedAt -- a later seed's
+   *   execute() call owns the batch's terminal transition.
+   */
+  readonly isLastSeed?: boolean;
+
+  /**
+   * Whether an earlier seed in this batch already failed.
+   * Only consulted when isLastSeed is true (or omitted). When true, the
+   * final transition is lifecycle.fail() even if THIS seed's own drain
+   * completed cleanly -- a later successful seed must never overwrite an
+   * earlier seed's failure with "complete" (Option II).
+   * Default: false.
+   */
+  readonly batchFailed?: boolean;
+}
+
 export class RunCoordinator {
   constructor(
     private readonly lifecycle: RunLifecycleService,
@@ -73,7 +104,13 @@ export class RunCoordinator {
    * Returns the final RunStats collected during this execution.
    * Throws (after persisting "failed") if an unrecoverable error occurs.
    */
-  async execute(runId: RunID): Promise<RunStats> {
+  async execute(
+    runId: RunID,
+    batchOpts?: RunCoordinatorBatchOptions,
+  ): Promise<RunStats> {
+    const isLastSeed = batchOpts?.isLastSeed ?? true;
+    const batchFailed = batchOpts?.batchFailed ?? false;
+
     // 1. Transition to running
     const runningRun = await this.lifecycle.start(runId);
 
@@ -138,14 +175,26 @@ export class RunCoordinator {
     try {
       await runner.drain();
     } catch (err) {
-      // Unrecoverable error - persist failed status with whatever stats we have
-      await this.lifecycle
-        .fail(runId, {
-          errors: accumulated.errors + 1,
-        })
-        .catch(() => {
-          // Best-effort - don't mask the original error
-        });
+      if (isLastSeed) {
+        // Unrecoverable error on the batch's terminal seed - persist
+        // failed status with whatever stats we have.
+        await this.lifecycle
+          .fail(runId, {
+            errors: accumulated.errors + 1,
+          })
+          .catch(() => {
+            // Best-effort - don't mask the original error
+          });
+      } else {
+        // Non-terminal seed in a multi-seed batch: record the error in
+        // stats, but do NOT transition status/completedAt -- a later
+        // seed's execute() call owns the batch's terminal transition.
+        await this.lifecycle
+          .incrementStats(runId, { errors: 1 })
+          .catch(() => {
+            // Best-effort - don't mask the original error
+          });
+      }
       throw err;
     }
 
@@ -156,8 +205,20 @@ export class RunCoordinator {
         accumulated.errors + runner.stats.failed + runner.stats.deadLettered,
     };
 
-    // 5. Transition to complete with final stats
-    await this.lifecycle.complete(runId, accumulated);
+    // 5. Transition to a terminal status only if this is the batch's last
+    // seed. Non-terminal seeds already persisted their stats incrementally
+    // via onSuccess's incrementStats() calls above -- nothing further to
+    // write here.
+    if (isLastSeed) {
+      if (batchFailed) {
+        // An earlier seed in this batch already failed. This seed's own
+        // work succeeded, but per Option II a later success must never
+        // overwrite an earlier failure with "complete".
+        await this.lifecycle.fail(runId);
+      } else {
+        await this.lifecycle.complete(runId, accumulated);
+      }
+    }
 
     return accumulated;
   }

@@ -307,6 +307,45 @@ describe("RuntimeExecutor (unit)", () => {
     expect(mockCoordinator.execute).toHaveBeenNthCalledWith(1, runIdA);
     expect(mockCoordinator.execute).toHaveBeenNthCalledWith(2, runIdB);
   });
+
+  it("passes isLastSeed and batchFailed to coordinator.execute when provided", async () => {
+    const dStats = makeDiscoveryStats(1);
+    const nStats = { ...ZERO_RUN_STATS, recordsNormalized: 1 };
+    const mockRunner = makeMockDiscoveryRunner(dStats);
+    const mockCoordinator = makeMockCoordinator(nStats);
+    const factory = vi.fn().mockReturnValue(mockRunner);
+    const executor = new RuntimeExecutor(factory, mockCoordinator);
+
+    await executor.execute({
+      provider: makeMockProvider([]),
+      runId: TEST_RUN_ID,
+      query: makeResolvedQuery(),
+      isLastSeed: false,
+      batchFailed: true,
+    });
+
+    expect(mockCoordinator.execute).toHaveBeenCalledWith(TEST_RUN_ID, {
+      isLastSeed: false,
+      batchFailed: true,
+    });
+  });
+
+  it("omits the second argument to coordinator.execute when isLastSeed/batchFailed are not provided (backward compatible)", async () => {
+    const dStats = makeDiscoveryStats(1);
+    const nStats = { ...ZERO_RUN_STATS, recordsNormalized: 1 };
+    const mockRunner = makeMockDiscoveryRunner(dStats);
+    const mockCoordinator = makeMockCoordinator(nStats);
+    const factory = vi.fn().mockReturnValue(mockRunner);
+    const executor = new RuntimeExecutor(factory, mockCoordinator);
+
+    await executor.execute({
+      provider: makeMockProvider([]),
+      runId: TEST_RUN_ID,
+      query: makeResolvedQuery(),
+    });
+
+    expect(mockCoordinator.execute).toHaveBeenCalledWith(TEST_RUN_ID);
+  });
 });
 
 // ---------------------------------------------------------------------------

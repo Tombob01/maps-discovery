@@ -191,19 +191,35 @@ export function createServer(
     // Set guard before returning so concurrent requests are rejected immediately.
     isExecuting = true;
     void (async () => {
+      const typedRunId = runId as import("../core/types/common.js").RunID;
+
+      // Transition the run to "running" before the FIRST seed's discovery
+      // begins (Slice D). Without this, the run stays "pending" (or shows
+      // a stale "complete" from a prior batch) for the entire duration of
+      // the first seed's discovery phase -- see RuntimeFacade.startRun().
+      await facade.startRun(typedRunId);
+
+      // Tracks whether ANY seed in this batch has failed so far. Only
+      // consulted by RunCoordinator when a seed's isLastSeed is true
+      // (Option II: a later success must never overwrite an earlier
+      // failure with "complete").
+      let batchFailed = false;
 
     // Background pipeline — client polls GET /api/runs/:id for updates.
       for (let i = 0; i < seedsCopy.length; i++) {
         const seed = seedsCopy[i]!;
+        const isLastSeed = i === seedsCopy.length - 1;
         const statuses = seedStatusByRun.get(runId);
         const entry = statuses?.[i];
         if (entry) entry.status = "running";
         try {
           await facade.executeFromSeed({
             provider,
-            runId: runId as import("../core/types/common.js").RunID,
+            runId: typedRunId,
             keyword: seed.keyword,
             location: seed.location,
+            isLastSeed,
+            batchFailed,
           });
           if (entry) entry.status = "complete";
         } catch (err) {
@@ -213,6 +229,7 @@ export function createServer(
             " error=" + message,
           );
           if (entry) { entry.status = "failed"; entry.error = message; }
+          batchFailed = true;
           // continue to next seed — failure of one keyword must not stop the batch
         }
       }

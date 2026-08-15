@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @module runtime/RuntimeFacade
  *
  * Stable public API for the runtime. Delegates only -- no logic.
@@ -8,6 +8,7 @@ import type { IProvider, DiscoveryOptions } from "../core/interfaces/IProvider.j
 import type { ResolvedQuery, QuerySeed } from "../core/models/Query.js";
 import type { RunID } from "../core/types/common.js";
 import type { RunStats } from "../core/models/Job.js";
+import type { RunLifecycleService } from "../storage/RunLifecycleService.js";
 import type { RunService } from "../api/RunService.js";
 import type { RuntimeExecutor, ExecutionSummary } from "./RuntimeExecutor.js";
 import type { KeywordExpansionService, ExpansionResponse } from "../ai/KeywordExpansionService.js";
@@ -80,6 +81,14 @@ export interface ExecuteFromSeedOptions {
   /** Human-readable location string, e.g. "Lagos, Nigeria" */
   readonly location: string;
   readonly discoveryOptions?: DiscoveryOptions;
+  /**
+   * Additive, optional batch-position information, forwarded unchanged
+   * to RuntimeExecutor.execute() -> RunCoordinator.execute(). Omitted
+   * -> exact prior behavior (every call performs the terminal
+   * lifecycle transition).
+   */
+  readonly isLastSeed?: boolean;
+  readonly batchFailed?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,7 +121,23 @@ export class RuntimeFacade {
     private readonly queryEngine: QueryEngine,
     private readonly geoResolver: IGeoResolver,
     private readonly resolvedQueryFactory: ResolvedQueryFactory,
+    private readonly lifecycle: RunLifecycleService,
   ) {}
+
+  /**
+   * Transitions a run to "running" before discovery begins for a seed.
+   * Thin passthrough to RunLifecycleService.start() -- delegates only, no
+   * logic, consistent with the rest of this facade.
+   *
+   * Added to support multi-seed batches: the run must enter "running"
+   * before the FIRST seed's discovery starts, not only after a seed's
+   * RunCoordinator.execute() call (which happens post-discovery). Safe
+   * to call before every seed in a batch -- RunLifecycleService.start()
+   * is idempotent on startedAt.
+   */
+  async startRun(runId: RunID): Promise<void> {
+    await this.lifecycle.start(runId);
+  }
 
   async expandKeyword(opts: ExpandKeywordOptions): Promise<ExpansionResponse> {
     const expansionOpts = {
@@ -187,6 +212,12 @@ export class RuntimeFacade {
       query: resolvedQuery,
       ...(opts.discoveryOptions !== undefined
         ? { discoveryOptions: opts.discoveryOptions }
+        : {}),
+      ...(opts.isLastSeed !== undefined
+        ? { isLastSeed: opts.isLastSeed }
+        : {}),
+      ...(opts.batchFailed !== undefined
+        ? { batchFailed: opts.batchFailed }
         : {}),
     });
   }

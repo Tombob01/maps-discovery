@@ -443,3 +443,131 @@ describe("RunCoordinator - stats tracking", () => {
     expect(stats.errors).toBe(0);
   });
 });
+
+describe("RunCoordinator - batch-position awareness (multi-seed lifecycle)", () => {
+  let runStore: StubRunStore;
+  let recordStore: StubRecordStore;
+
+  beforeEach(() => {
+    runStore = new StubRunStore();
+    recordStore = new StubRecordStore();
+  });
+
+  it("isLastSeed omitted behaves exactly like isLastSeed: true (default)", async () => {
+    runStore.seed(makeRun());
+    const queue = new InMemoryQueue<NormalizationJobPayload>("norm");
+    const coordinator = makeCoordinator(runStore, recordStore, queue, new Map());
+
+    await coordinator.execute(RUN_ID);
+
+    const run = await runStore.getById(RUN_ID);
+    expect(run?.status).toBe("complete");
+    expect(run?.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("isLastSeed: false does not transition status to complete", async () => {
+    runStore.seed(makeRun());
+    const queue = new InMemoryQueue<NormalizationJobPayload>("norm");
+    const coordinator = makeCoordinator(runStore, recordStore, queue, new Map());
+
+    await coordinator.execute(RUN_ID, { isLastSeed: false });
+
+    const run = await runStore.getById(RUN_ID);
+    expect(run?.status).toBe("running");
+    expect(run?.completedAt).toBeNull();
+  });
+
+  it("isLastSeed: false still persists normalized records and stats", async () => {
+    runStore.seed(makeRun());
+    const queue = new InMemoryQueue<NormalizationJobPayload>("norm");
+    const rawStore = new Map<string, ProviderResult>([
+      ["raw-1", makeProviderResult("Ace Plumbers")],
+    ]);
+    await queue.enqueue(makeJobPayload("raw-1"));
+    const coordinator = makeCoordinator(runStore, recordStore, queue, rawStore);
+
+    const stats = await coordinator.execute(RUN_ID, { isLastSeed: false });
+
+    expect(recordStore.inserted).toHaveLength(1);
+    expect(stats.recordsNormalized).toBe(1);
+    const run = await runStore.getById(RUN_ID);
+    expect(run?.status).toBe("running");
+    expect(run?.stats.recordsNormalized).toBe(1);
+  });
+
+  it("isLastSeed: true, batchFailed: true transitions to failed even when drain succeeds cleanly", async () => {
+    runStore.seed(makeRun());
+    const queue = new InMemoryQueue<NormalizationJobPayload>("norm");
+    const coordinator = makeCoordinator(runStore, recordStore, queue, new Map());
+
+    await coordinator.execute(RUN_ID, { isLastSeed: true, batchFailed: true });
+
+    const run = await runStore.getById(RUN_ID);
+    expect(run?.status).toBe("failed");
+    expect(run?.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("isLastSeed: true, batchFailed: false (default) transitions to complete as before", async () => {
+    runStore.seed(makeRun());
+    const queue = new InMemoryQueue<NormalizationJobPayload>("norm");
+    const coordinator = makeCoordinator(runStore, recordStore, queue, new Map());
+
+    await coordinator.execute(RUN_ID, { isLastSeed: true });
+
+    const run = await runStore.getById(RUN_ID);
+    expect(run?.status).toBe("complete");
+  });
+
+  it("isLastSeed: false with a drain-level crash increments error stats but does not transition status", async () => {
+    runStore.seed(makeRun());
+
+    const badQueue = {
+      name: "bad",
+      enqueue: vi.fn(),
+      dequeue: vi.fn().mockRejectedValue(new Error("queue crashed")),
+      ack: vi.fn(),
+      nack: vi.fn(),
+      depth: vi.fn().mockResolvedValue({ ok: true, value: 0 }),
+    } as unknown as InMemoryQueue<NormalizationJobPayload>;
+
+    const lifecycle = new RunLifecycleService(runStore, recordStore);
+    const normalizer = new BusinessNormalizer([new GoogleMapsProviderMapper()]);
+    const coordinator = new RunCoordinator(lifecycle, normalizer, badQueue, {
+      fetchRawResult: async () => null,
+      pollIntervalMs: 0,
+    });
+
+    await expect(
+      coordinator.execute(RUN_ID, { isLastSeed: false }),
+    ).rejects.toThrow("queue crashed");
+
+    const run = await runStore.getById(RUN_ID);
+    expect(run?.status).toBe("running");
+    expect(run?.stats.errors).toBe(1);
+  });
+
+  it("isLastSeed: true (default) with a drain-level crash still transitions to failed (unchanged)", async () => {
+    runStore.seed(makeRun());
+
+    const badQueue = {
+      name: "bad",
+      enqueue: vi.fn(),
+      dequeue: vi.fn().mockRejectedValue(new Error("queue crashed")),
+      ack: vi.fn(),
+      nack: vi.fn(),
+      depth: vi.fn().mockResolvedValue({ ok: true, value: 0 }),
+    } as unknown as InMemoryQueue<NormalizationJobPayload>;
+
+    const lifecycle = new RunLifecycleService(runStore, recordStore);
+    const normalizer = new BusinessNormalizer([new GoogleMapsProviderMapper()]);
+    const coordinator = new RunCoordinator(lifecycle, normalizer, badQueue, {
+      fetchRawResult: async () => null,
+      pollIntervalMs: 0,
+    });
+
+    await expect(coordinator.execute(RUN_ID)).rejects.toThrow("queue crashed");
+
+    const run = await runStore.getById(RUN_ID);
+    expect(run?.status).toBe("failed");
+  });
+});

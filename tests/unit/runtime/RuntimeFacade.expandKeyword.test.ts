@@ -28,6 +28,7 @@ function makeFacade(suggestions: ExpandedKeyword[]): RuntimeFacade {
     {} as QueryEngine,
     {} as IGeoResolver,
     {} as ResolvedQueryFactory,
+    {} as unknown as import("../../../src/storage/RunLifecycleService.js").RunLifecycleService,
   );
 }
 
@@ -42,7 +43,7 @@ describe("RuntimeFacade.expandKeyword", () => {
   it("passes location and limit to expansion service", async () => {
     const provider: IKeywordExpansionProvider = { expand: vi.fn().mockResolvedValue([]) };
     const service = new KeywordExpansionService(provider);
-    const facade = new RuntimeFacade({} as RunService, {} as RuntimeExecutor, service, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
+    const facade = new RuntimeFacade({} as RunService, {} as RuntimeExecutor, service, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory, {} as unknown as import("../../../src/storage/RunLifecycleService.js").RunLifecycleService);
     await facade.expandKeyword({ keyword: "plumber", location: "Lagos", limit: 5 });
     expect(provider.expand).toHaveBeenCalledWith("plumber", { location: "Lagos", limit: 5 });
   });
@@ -58,7 +59,7 @@ describe("RuntimeFacade.expandKeyword", () => {
       expand: vi.fn().mockRejectedValue(new Error("ai down")),
     };
     const service = new KeywordExpansionService(provider);
-    const facade = new RuntimeFacade({} as RunService, {} as RuntimeExecutor, service, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory);
+    const facade = new RuntimeFacade({} as RunService, {} as RuntimeExecutor, service, {} as QueryEngine, {} as IGeoResolver, {} as ResolvedQueryFactory, {} as unknown as import("../../../src/storage/RunLifecycleService.js").RunLifecycleService);
     await expect(facade.expandKeyword({ keyword: "plumber" })).resolves.toBeDefined();
   });
 
