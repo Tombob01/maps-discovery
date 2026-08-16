@@ -30,6 +30,7 @@ import type {
 } from "../../../src/core/models/Job.js";
 import type { BusinessRecord } from "../../../src/core/models/BusinessRecord.js";
 import type { ProviderResult } from "../../../src/core/models/ProviderResult.js";
+import type { ProposalProductionCoordinator } from "../../../src/pipeline/ProposalProductionCoordinator.js";
 import type {
   RunID,
   QueryID,
@@ -567,6 +568,169 @@ describe("RunCoordinator - batch-position awareness (multi-seed lifecycle)", () 
 
     await expect(coordinator.execute(RUN_ID)).rejects.toThrow("queue crashed");
 
+    const run = await runStore.getById(RUN_ID);
+    expect(run?.status).toBe("failed");
+  });
+});
+
+describe("RunCoordinator - proposal-production drain (Family E, additive)", () => {
+  let runStore: StubRunStore;
+  let recordStore: StubRecordStore;
+
+  beforeEach(() => {
+    runStore = new StubRunStore();
+    recordStore = new StubRecordStore();
+  });
+
+  function makeStubProposalCoordinator(
+    drainImpl: () => Promise<void>,
+  ): { coordinator: ProposalProductionCoordinator; drain: ReturnType<typeof vi.fn> } {
+    const drain = vi.fn(drainImpl);
+    const coordinator = { drain, stats: {} } as unknown as ProposalProductionCoordinator;
+    return { coordinator, drain };
+  }
+
+  /**
+   * Wraps StubRecordStore, pushing "normalization-complete" into the
+   * shared callOrder array at the exact moment RunCoordinator's onSuccess
+   * callback persists a normalized record -- this is the real completion
+   * signal for normalization work on a given job, not an approximation.
+   */
+  class OrderTrackingRecordStore implements IRecordStore {
+    constructor(
+      private readonly inner: StubRecordStore,
+      private readonly callOrder: string[],
+    ) {}
+    async insert(r: BusinessRecord): Promise<void> {
+      this.callOrder.push("normalization-complete");
+      return this.inner.insert(r);
+    }
+    async insertMany(rs: readonly BusinessRecord[]): Promise<number> {
+      this.callOrder.push("normalization-complete");
+      return this.inner.insertMany(rs);
+    }
+    async getByRunId(id: string): Promise<readonly BusinessRecord[]> {
+      return this.inner.getByRunId(id);
+    }
+    async getByRunIdPaginated(
+      id: string,
+      limit: number,
+      offset: number,
+    ): Promise<readonly BusinessRecord[]> {
+      return this.inner.getByRunIdPaginated(id, limit, offset);
+    }
+    async countByRunId(id: string): Promise<number> {
+      return this.inner.countByRunId(id);
+    }
+  }
+
+  it("normalization drain fully completes before proposal-production drain begins", async () => {
+    runStore.seed(makeRun());
+    const queue = new InMemoryQueue<NormalizationJobPayload>("norm");
+    const rawStore = new Map<string, ProviderResult>([
+      ["raw-1", makeProviderResult("Ace Plumbers")],
+    ]);
+    await queue.enqueue(makeJobPayload("raw-1"));
+
+    const callOrder: string[] = [];
+    const orderTrackingRecordStore = new OrderTrackingRecordStore(recordStore, callOrder);
+    const lifecycle = new RunLifecycleService(runStore, orderTrackingRecordStore);
+    const normalizer = new BusinessNormalizer([new GoogleMapsProviderMapper()]);
+
+    const { coordinator: proposalCoordinator, drain } = makeStubProposalCoordinator(async () => {
+      callOrder.push("proposal-drain");
+    });
+
+    const coordinator = new RunCoordinator(
+      lifecycle,
+      normalizer,
+      queue,
+      {
+        fetchRawResult: async (id) => {
+          callOrder.push("normalization-start");
+          return rawStore.get(id) ?? null;
+        },
+        pollIntervalMs: 0,
+      },
+      proposalCoordinator,
+    );
+
+    await coordinator.execute(RUN_ID);
+
+    expect(callOrder).toEqual([
+      "normalization-start",
+      "normalization-complete",
+      "proposal-drain",
+    ]);
+    expect(drain).toHaveBeenCalledTimes(1);
+    const run = await runStore.getById(RUN_ID);
+    expect(run?.status).toBe("complete");
+  });
+
+  it("contains a proposal-production drain failure: does not rethrow, does not fail the run, still completes normally", async () => {
+    runStore.seed(makeRun());
+    const queue = new InMemoryQueue<NormalizationJobPayload>("norm");
+    const { coordinator: proposalCoordinator, drain } = makeStubProposalCoordinator(async () => {
+      throw new Error("proposal production exploded");
+    });
+
+    const lifecycle = new RunLifecycleService(runStore, recordStore);
+    const normalizer = new BusinessNormalizer([new GoogleMapsProviderMapper()]);
+    const coordinator = new RunCoordinator(
+      lifecycle,
+      normalizer,
+      queue,
+      { fetchRawResult: async () => null, pollIntervalMs: 0 },
+      proposalCoordinator,
+    );
+
+    await expect(coordinator.execute(RUN_ID)).resolves.toBeDefined();
+
+    expect(drain).toHaveBeenCalledTimes(1);
+    const run = await runStore.getById(RUN_ID);
+    expect(run?.status).toBe("complete");
+    expect(run?.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("does not attempt proposal-production drain when the coordinator is omitted; existing behavior unchanged", async () => {
+    runStore.seed(makeRun());
+    const queue = new InMemoryQueue<NormalizationJobPayload>("norm");
+    const coordinator = makeCoordinator(runStore, recordStore, queue, new Map());
+
+    await coordinator.execute(RUN_ID);
+
+    const run = await runStore.getById(RUN_ID);
+    expect(run?.status).toBe("complete");
+    expect(run?.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("does not call proposal-production drain when normalization drain itself fails", async () => {
+    runStore.seed(makeRun());
+
+    const badQueue = {
+      name: "bad",
+      enqueue: vi.fn(),
+      dequeue: vi.fn().mockRejectedValue(new Error("queue crashed")),
+      ack: vi.fn(),
+      nack: vi.fn(),
+      depth: vi.fn().mockResolvedValue({ ok: true, value: 0 }),
+    } as unknown as InMemoryQueue<NormalizationJobPayload>;
+
+    const { coordinator: proposalCoordinator, drain } = makeStubProposalCoordinator(async () => {});
+
+    const lifecycle = new RunLifecycleService(runStore, recordStore);
+    const normalizer = new BusinessNormalizer([new GoogleMapsProviderMapper()]);
+    const coordinator = new RunCoordinator(
+      lifecycle,
+      normalizer,
+      badQueue,
+      { fetchRawResult: async () => null, pollIntervalMs: 0 },
+      proposalCoordinator,
+    );
+
+    await expect(coordinator.execute(RUN_ID)).rejects.toThrow("queue crashed");
+
+    expect(drain).not.toHaveBeenCalled();
     const run = await runStore.getById(RUN_ID);
     expect(run?.status).toBe("failed");
   });

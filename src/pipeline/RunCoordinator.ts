@@ -33,6 +33,7 @@ import type { RunLifecycleService } from "../storage/RunLifecycleService.js";
 import { NormalizationStage } from "./NormalizationStage.js";
 import { PipelineRunner } from "./PipelineRunner.js";
 import type { ProviderResult } from "../core/models/ProviderResult.js";
+import type { ProposalProductionCoordinator } from "./ProposalProductionCoordinator.js";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -94,6 +95,7 @@ export class RunCoordinator {
     private readonly normalizer: INormalizer,
     private readonly queue: IQueue<NormalizationJobPayload>,
     private readonly opts: RunCoordinatorOptions,
+    private readonly proposalProductionCoordinator?: ProposalProductionCoordinator,
   ) {}
 
   /**
@@ -196,6 +198,29 @@ export class RunCoordinator {
           });
       }
       throw err;
+    }
+
+    // 3b. Proposal-production drain (Family E) -- additive, best-effort.
+    // Reached ONLY when normalization drain above succeeded (the catch
+    // block's `throw err` makes this unreachable on normalization
+    // failure -- proposal-production is intentionally skipped in that
+    // case; see RunCoordinator.test.ts's "does not call
+    // proposal-production drain when normalization drain itself fails"
+    // test). A proposal-production failure here must never fail the
+    // run, alter its status, or propagate -- isolated in its own
+    // try/catch, deliberately not reusing the normalization catch block
+    // above.
+    if (this.proposalProductionCoordinator !== undefined) {
+      try {
+        await this.proposalProductionCoordinator.drain();
+      } catch (err) {
+        console.error(
+          "[run-coordinator:proposal-production-drain-error] runId=" +
+            runId +
+            " error=" +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      }
     }
 
     // 4. Incorporate runner stats (skips, dead-letters, failures) into final counts

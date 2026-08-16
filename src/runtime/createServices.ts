@@ -106,7 +106,7 @@ export function createServices(
   );
   const coordinator = new RunCoordinator(lifecycle, normalizer, normalizationQueue, {
     fetchRawResult: (id) => rawResultStore.fetch(id),
-  });
+  }, proposalProductionCoordinator);
   const noopWrite: (dest: string, content: string) => Promise<void> = async () => {};
   const exporters: Map<string, IExporter> =
     overrides.exporters ??
