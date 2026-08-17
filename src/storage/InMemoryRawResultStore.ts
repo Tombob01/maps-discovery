@@ -92,6 +92,51 @@ export class InMemoryRawResultStore implements IRawResultStore {
     return { id, isNew: true };
   }
 
+  async saveAndGetIdWithWebsiteFill(
+    result: ProviderResult,
+    website: string,
+  ): Promise<{ id: UUID; isNew: boolean; updated: boolean }> {
+    const key = this.identityKey(result);
+    const existingId = this.assignedIds.get(key);
+
+    if (existingId === undefined) {
+      const isNew = await this.save(result);
+      void isNew;
+      const id = this.assignedIds.get(key);
+      if (id === undefined) {
+        throw new Error(
+          "InMemoryRawResultStore.saveAndGetIdWithWebsiteFill(): no id assigned after save()",
+        );
+      }
+      return { id, isNew: true, updated: false };
+    }
+
+    const existing = this.resultsById.get(existingId);
+    if (existing === undefined) {
+      throw new Error(
+        "InMemoryRawResultStore.saveAndGetIdWithWebsiteFill(): assigned id has no stored result",
+      );
+    }
+
+    const existingPayload = (existing.rawPayload ?? {}) as Record<string, unknown>;
+    const existingWebsite = existingPayload["website"];
+    const existingHasWebsite =
+      typeof existingWebsite === "string" && existingWebsite.trim().length > 0;
+
+    if (existingHasWebsite) {
+      return { id: existingId, isNew: false, updated: false };
+    }
+
+    const mergedResult: ProviderResult = {
+      ...existing,
+      rawPayload: { ...existingPayload, website },
+    };
+    this.results.set(result.providerResultId, mergedResult);
+    this.resultsById.set(existingId, mergedResult);
+
+    return { id: existingId, isNew: false, updated: true };
+  }
+
   /** Total stored results. Used by tests for assertion. */
   get size(): number {
     return this.results.size;

@@ -56,4 +56,38 @@ export interface IRawResultStore {
    * already existed.
    */
   saveAndGetId(result: ProviderResult): Promise<{ id: UUID; isNew: boolean }>;
+
+  /**
+   * OPTIONAL capability. Persists a single ProviderResult with the same
+   * idempotency semantics as saveAndGetId(), but additionally allows an
+   * existing duplicate identity's row to have its website filled in --
+   * narrowly, only when the existing row currently has none. Never
+   * overwrites an existing non-empty website (a business later exposing
+   * a *different* website is explicitly out of scope and must leave the
+   * existing website untouched). Never updates any other field of the
+   * existing payload -- name, phone, address, rating, hours, etc. all
+   * survive unchanged.
+   *
+   * Optional so existing implementations and test doubles remain valid
+   * without change; callers (e.g. DiscoveryRunner) feature-detect this
+   * method and fall back to plain saveAndGetId() when absent, or when
+   * the incoming occurrence has no website to offer.
+   *
+   * `website` is the actual, already-validated, non-empty website
+   * string extracted by the caller from the incoming occurrence's
+   * payload -- callers must not call this method at all when no such
+   * value exists (there is no boolean/empty-string calling convention
+   * to guard against here; the type itself is the contract).
+   *
+   * Returns:
+   *   - isNew: true                  -> a new row was inserted
+   *   - isNew: false, updated: true  -> existing row's website field
+   *     was filled in; every other existing field is preserved exactly
+   *   - isNew: false, updated: false -> existing row unchanged
+   *     (it already had a website)
+   */
+  saveAndGetIdWithWebsiteFill?(
+    result: ProviderResult,
+    website: string,
+  ): Promise<{ id: UUID; isNew: boolean; updated: boolean }>;
 }

@@ -46,6 +46,14 @@ export interface DiscoveryStats {
 // DiscoveryRunner
 // ---------------------------------------------------------------------------
 
+function extractWebsite(rawPayload: unknown): string | undefined {
+  if (typeof rawPayload !== "object" || rawPayload === null) return undefined;
+  const website = (rawPayload as Record<string, unknown>)["website"];
+  if (typeof website !== "string") return undefined;
+  const trimmed = website.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 export class DiscoveryRunner {
   constructor(
     private readonly provider: IProvider,
@@ -74,25 +82,37 @@ export class DiscoveryRunner {
       resultsCollected++;
 
       let wasNewInsert: boolean;
+      let wasUpdatedWithWebsite: boolean;
       let assignedRawResultId: UUID;
       try {
-        const saveResult = await this.rawResultStore.saveAndGetId(result);
-        wasNewInsert = saveResult.isNew;
-        assignedRawResultId = saveResult.id;
+        const website = extractWebsite(result.rawPayload);
+        if (
+          this.rawResultStore.saveAndGetIdWithWebsiteFill !== undefined &&
+          website !== undefined
+        ) {
+          const saveResult = await this.rawResultStore.saveAndGetIdWithWebsiteFill(result, website);
+          wasNewInsert = saveResult.isNew;
+          wasUpdatedWithWebsite = saveResult.updated;
+          assignedRawResultId = saveResult.id;
+        } else {
+          const saveResult = await this.rawResultStore.saveAndGetId(result);
+          wasNewInsert = saveResult.isNew;
+          wasUpdatedWithWebsite = false;
+          assignedRawResultId = saveResult.id;
+        }
       } catch (err) {
         console.error("[discovery:save-error] providerResultId=" + result.providerResultId + " runId=" + result.runId + " queryId=" + result.queryId + " error=" + (err instanceof Error ? err.message : String(err)) + " stack=" + (err instanceof Error ? err.stack : "n/a"));
         errors++;
         continue;
       }
 
-      if (!wasNewInsert) {
-        // Already collected earlier in this run (e.g. rediscovered via an
-        // overlapping seed/query) -- the row already exists, so no new
-        // normalization job is needed for it. Not an error.
+      if (!wasNewInsert && !wasUpdatedWithWebsite) {
         continue;
       }
 
-      resultsSaved++;
+      if (wasNewInsert) {
+        resultsSaved++;
+      }
 
       try {
         const payload: NormalizationJobPayload = {

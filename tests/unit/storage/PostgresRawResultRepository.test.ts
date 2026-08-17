@@ -338,3 +338,138 @@ describe("PostgresRawResultRepository.saveAndGetId", () => {
     expect(fallbackParams).toContain("place-dup2");
   });
 });
+
+// ---------------------------------------------------------------------------
+// saveAndGetIdWithWebsiteFill()
+//
+// Uses this suite's established mocked-PostgresClient convention. These
+// tests prove SQL construction, parameters, and control flow -- they
+// cannot independently prove PostgreSQL's actual jsonb_set() storage
+// behavior against a live database, since no real Postgres instance is
+// used anywhere in this test suite.
+// ---------------------------------------------------------------------------
+
+describe("PostgresRawResultRepository.saveAndGetIdWithWebsiteFill", () => {
+  it("attempts the initial INSERT first, returning isNew: true when it succeeds", async () => {
+    const client = makeClient(
+      [{ id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee" }],
+      1,
+    );
+    const repo = new PostgresRawResultRepository(client);
+
+    const result = await repo.saveAndGetIdWithWebsiteFill(
+      makeResult("place-new-fill"),
+      "https://example.com",
+    );
+
+    expect(result.isNew).toBe(true);
+    expect(result.updated).toBe(false);
+    expect(result.id).toBe("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+    const [sql] = (client.query as ReturnType<typeof vi.fn>).mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("INSERT INTO raw_results");
+    expect(sql).toContain("RETURNING id");
+  });
+
+  it("on conflict, uses a targeted jsonb_set update rather than replacing raw_payload", async () => {
+    const query = vi.fn();
+    query
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // insert conflict
+      .mockResolvedValueOnce({
+        rows: [{ id: "ffffffff-ffff-ffff-ffff-ffffffffffff" }],
+        rowCount: 1,
+      }); // update succeeds
+    const client = { query } as unknown as PostgresClient;
+    const repo = new PostgresRawResultRepository(client);
+
+    const result = await repo.saveAndGetIdWithWebsiteFill(
+      makeResult("place-fill"),
+      "https://example.com",
+    );
+
+    expect(result.isNew).toBe(false);
+    expect(result.updated).toBe(true);
+    expect(result.id).toBe("ffffffff-ffff-ffff-ffff-ffffffffffff");
+
+    const [updateSql] = query.mock.calls[1] as [string, unknown[]];
+    expect(updateSql).toContain("jsonb_set");
+    expect(updateSql).toContain("{website}");
+    expect(updateSql).not.toContain("SET raw_payload = $1");
+  });
+
+  it("JSON-encodes the website as the jsonb_set replacement parameter", async () => {
+    const query = vi.fn();
+    query
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({
+        rows: [{ id: "ffffffff-ffff-ffff-ffff-ffffffffffff" }],
+        rowCount: 1,
+      });
+    const client = { query } as unknown as PostgresClient;
+    const repo = new PostgresRawResultRepository(client);
+
+    await repo.saveAndGetIdWithWebsiteFill(makeResult("place-fill2"), "https://example.com");
+
+    const [, updateParams] = query.mock.calls[1] as [string, unknown[]];
+    expect(updateParams[0]).toBe(JSON.stringify("https://example.com"));
+  });
+
+  it("the update WHERE clause guards against overwriting an existing non-empty website", async () => {
+    const query = vi.fn();
+    query
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({
+        rows: [{ id: "ffffffff-ffff-ffff-ffff-ffffffffffff" }],
+        rowCount: 1,
+      });
+    const client = { query } as unknown as PostgresClient;
+    const repo = new PostgresRawResultRepository(client);
+
+    await repo.saveAndGetIdWithWebsiteFill(makeResult("place-fill3"), "https://example.com");
+
+    const [updateSql] = query.mock.calls[1] as [string, unknown[]];
+    expect(updateSql).toContain("raw_payload->>'website' IS NULL");
+    expect(updateSql).toContain("raw_payload->>'website' = ''");
+  });
+
+  it("when the update returns no row (existing website already present), falls back to lookup and returns updated: false", async () => {
+    const query = vi.fn();
+    query
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // insert conflict
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // update matches nothing (already has website)
+      .mockResolvedValueOnce({
+        rows: [{ id: "gggggggg-gggg-gggg-gggg-gggggggggggg" }],
+        rowCount: 1,
+      }); // fallback lookup
+    const client = { query } as unknown as PostgresClient;
+    const repo = new PostgresRawResultRepository(client);
+
+    const result = await repo.saveAndGetIdWithWebsiteFill(
+      makeResult("place-fill4"),
+      "https://different.example.com",
+    );
+
+    expect(result.isNew).toBe(false);
+    expect(result.updated).toBe(false);
+    expect(result.id).toBe("gggggggg-gggg-gggg-gggg-gggggggggggg");
+    expect(query).toHaveBeenCalledTimes(3);
+  });
+
+  it("fallback lookup queries by run_id, provider_id, provider_result_id", async () => {
+    const query = vi.fn();
+    query
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({
+        rows: [{ id: "gggggggg-gggg-gggg-gggg-gggggggggggg" }],
+        rowCount: 1,
+      });
+    const client = { query } as unknown as PostgresClient;
+    const repo = new PostgresRawResultRepository(client);
+
+    await repo.saveAndGetIdWithWebsiteFill(makeResult("place-fill5"), "https://example.com");
+
+    const [fallbackSql, fallbackParams] = query.mock.calls[2] as [string, unknown[]];
+    expect(fallbackSql).toContain("WHERE run_id = $1 AND provider_id = $2 AND provider_result_id = $3");
+    expect(fallbackParams).toContain("place-fill5");
+  });
+});

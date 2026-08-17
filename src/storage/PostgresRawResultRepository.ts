@@ -132,4 +132,68 @@ export class PostgresRawResultRepository implements IRawResultStore {
     }
     return { id: existingRow.id as UUID, isNew: false };
   }
+
+  async saveAndGetIdWithWebsiteFill(
+    result: ProviderResult,
+    website: string,
+  ): Promise<{ id: UUID; isNew: boolean; updated: boolean }> {
+    const insertSql =
+      "INSERT INTO raw_results" +
+      " (run_id, query_id, provider_id, provider_result_id," +
+      "  raw_payload, resume_token, source_url, collected_at)" +
+      " VALUES ($1, $2, $3, $4, $5, $6, $7, $8)" +
+      " ON CONFLICT ON CONSTRAINT uq_raw_results_provider_result DO NOTHING" +
+      " RETURNING id";
+    const { rows } = await this.db.query<{ id: string }>(insertSql, [
+      result.runId,
+      null,
+      result.providerId,
+      result.providerResultId,
+      JSON.stringify(result.rawPayload),
+      result.resumeToken != null ? JSON.stringify(result.resumeToken) : null,
+      result.sourceUrl ?? null,
+      result.collectedAt,
+    ]);
+
+    const insertedRow = rows[0];
+    if (insertedRow !== undefined) {
+      return { id: insertedRow.id as UUID, isNew: true, updated: false };
+    }
+
+    const updateSql =
+      "UPDATE raw_results" +
+      " SET raw_payload = jsonb_set(raw_payload, '{website}', $1::jsonb, true)" +
+      " WHERE run_id = $2 AND provider_id = $3 AND provider_result_id = $4" +
+      "   AND (raw_payload->>'website' IS NULL OR raw_payload->>'website' = '')" +
+      " RETURNING id";
+    const { rows: updateRows } = await this.db.query<{ id: string }>(updateSql, [
+      JSON.stringify(website),
+      result.runId,
+      result.providerId,
+      result.providerResultId,
+    ]);
+    const updatedRow = updateRows[0];
+    if (updatedRow !== undefined) {
+      return { id: updatedRow.id as UUID, isNew: false, updated: true };
+    }
+
+    const fallbackSql =
+      "SELECT id" +
+      " FROM raw_results" +
+      " WHERE run_id = $1 AND provider_id = $2 AND provider_result_id = $3" +
+      " ORDER BY created_at DESC" +
+      " LIMIT 1";
+    const { rows: fallbackRows } = await this.db.query<{ id: string }>(fallbackSql, [
+      result.runId,
+      result.providerId,
+      result.providerResultId,
+    ]);
+    const existingRow2 = fallbackRows[0];
+    if (existingRow2 === undefined) {
+      throw new Error(
+        "PostgresRawResultRepository.saveAndGetIdWithWebsiteFill(): INSERT reported a conflict but no existing row was found on fallback lookup",
+      );
+    }
+    return { id: existingRow2.id as UUID, isNew: false, updated: false };
+  }
 }

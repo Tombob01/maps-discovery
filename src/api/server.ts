@@ -14,6 +14,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { RuntimeFacade } from "../runtime/RuntimeFacade.js";
 import type { IProvider } from "../core/interfaces/IProvider.js";
+import { PlaceIdWebsiteCache } from "../cache/PlaceIdWebsiteCache.js";
 
 // ---------------------------------------------------------------------------
 // Request body shapes expected from the frontend
@@ -190,6 +191,14 @@ export function createServer(
 
     // Set guard before returning so concurrent requests are rejected immediately.
     isExecuting = true;
+
+    // Per-run, in-memory Place-ID/website cache -- created fresh for
+    // this run's execute() call, shared by every seed in this batch,
+    // discarded when this closure completes. Never persisted, never
+    // shared across runs. See GoogleMapsProvider's Phase 2 gate for how
+    // it is consulted.
+    const placeIdWebsiteCache = new PlaceIdWebsiteCache();
+
     void (async () => {
       const typedRunId = runId as import("../core/types/common.js").RunID;
 
@@ -220,6 +229,7 @@ export function createServer(
             location: seed.location,
             isLastSeed,
             batchFailed,
+            discoveryOptions: { placeIdWebsiteCache },
           });
           if (entry) entry.status = "complete";
         } catch (err) {

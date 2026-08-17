@@ -218,7 +218,9 @@ export class PostgresRecordRepository implements IRecordStore {
     await this.db.query(
       `INSERT INTO businesses (${INSERT_COLUMNS})
        VALUES (${rowPlaceholders(1)})
-       ON CONFLICT (fingerprint) DO NOTHING`,
+       ON CONFLICT (fingerprint) DO UPDATE
+         SET website = EXCLUDED.website
+         WHERE businesses.website IS NULL AND EXCLUDED.website IS NOT NULL`,
       recordToParams(record),
     );
   }
@@ -245,7 +247,9 @@ export class PostgresRecordRepository implements IRecordStore {
     const pgResult = await this.db.query(
       `INSERT INTO businesses (${INSERT_COLUMNS})
        VALUES ${valueClauses.join(", ")}
-       ON CONFLICT (fingerprint) DO NOTHING`,
+       ON CONFLICT (fingerprint) DO UPDATE
+         SET website = EXCLUDED.website
+         WHERE businesses.website IS NULL AND EXCLUDED.website IS NOT NULL`,
       params,
     );
     const actualInserted = pgResult.rowCount ?? 0;

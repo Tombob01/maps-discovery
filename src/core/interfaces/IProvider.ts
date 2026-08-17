@@ -20,6 +20,7 @@ import type { ResolvedQuery } from "../models/Query.js";
 import type { Result } from "../types/common.js";
 import type { ResumeToken } from "../types/pagination.js";
 import type { ScrapingPolicy } from "../types/rate-limit.js";
+import type { PlaceIdWebsiteCache } from "../../cache/PlaceIdWebsiteCache.js";
 
 // ---------------------------------------------------------------------------
 // Provider capabilities declaration
@@ -67,6 +68,16 @@ export interface DiscoveryOptions {
    * Undefined = collect everything the provider returns.
    */
   readonly maxResults?: number;
+  /**
+   * Optional per-run cache tracking which Place IDs (or provider-
+   * specific identity equivalents) have already been observed in this
+   * run and whether a website was captured. Providers MAY consult this
+   * to skip redundant detail-page scraping for already-complete
+   * businesses. Providers that do not support this optimization
+   * simply ignore the field. Must be constructed fresh per run by the
+   * caller -- never shared across runs.
+   */
+  readonly placeIdWebsiteCache?: PlaceIdWebsiteCache;
 }
 
 // ---------------------------------------------------------------------------

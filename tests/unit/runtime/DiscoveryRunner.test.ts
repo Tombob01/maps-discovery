@@ -52,11 +52,15 @@ const STUB_RESUME_TOKEN: ResumeToken = {
   createdAt: 0,
 };
 
-function makeProviderResult(n: number, runId: RunID = TEST_RUN_ID): ProviderResult {
+function makeProviderResult(
+  n: number,
+  runId: RunID = TEST_RUN_ID,
+  rawPayloadOverrides: Record<string, unknown> = {},
+): ProviderResult {
   return {
     providerId: "google-maps",
     providerResultId: `result-${n}`,
-    rawPayload: { name: `Business ${n}`, placeId: `place-${n}` },
+    rawPayload: { name: `Business ${n}`, placeId: `place-${n}`, ...rawPayloadOverrides },
     sourceUrl: `https://maps.example.com/place-${n}`,
     collectedAt: new Date("2025-01-01T00:00:00Z"),
     runId,
@@ -479,5 +483,158 @@ describe("DiscoveryRunner", () => {
 
     const normDepth = await normalizationQueue.depth();
     expect(normDepth.ok ? normDepth.value : -1).toBe(2);
+  });
+
+  describe("saveAndGetIdWithWebsiteFill feature detection", () => {
+    function makeCapableStore() {
+      return new InMemoryRawResultStore();
+    }
+
+    it("new result with a capable store: new insert path, normalization enqueued", async () => {
+      const store = makeCapableStore();
+      const provider = makeMockProvider([
+        makeProviderResult(1, TEST_RUN_ID, { website: "https://example.com" }),
+      ]);
+      const runner = new DiscoveryRunner(provider, store, normalizationQueue);
+
+      const stats = await runner.run(makeResolvedQuery());
+
+      expect(stats.resultsSaved).toBe(1);
+      expect(stats.jobsEnqueued).toBe(1);
+
+      const depth = await normalizationQueue.depth();
+      expect(depth.ok ? depth.value : -1).toBe(1);
+    });
+
+    it("duplicate whose website gets filled: normalization enqueued again, resultsSaved not incremented", async () => {
+      const store = makeCapableStore();
+
+      const first = makeProviderResult(1, TEST_RUN_ID, {});
+      const second = makeProviderResult(1, TEST_RUN_ID, {
+        website: "https://example.com",
+      });
+
+      const provider = makeMockProvider([first, second]);
+      const runner = new DiscoveryRunner(provider, store, normalizationQueue);
+
+      const stats = await runner.run(makeResolvedQuery());
+
+      expect(stats.resultsSaved).toBe(1);
+      expect(stats.jobsEnqueued).toBe(2);
+
+      const depth = await normalizationQueue.depth();
+      expect(depth.ok ? depth.value : -1).toBe(2);
+    });
+
+    it("duplicate with no new website: no normalization job enqueued for the duplicate", async () => {
+      const store = makeCapableStore();
+
+      const first = makeProviderResult(1, TEST_RUN_ID, {});
+      const second = makeProviderResult(1, TEST_RUN_ID, {});
+
+      const provider = makeMockProvider([first, second]);
+      const runner = new DiscoveryRunner(provider, store, normalizationQueue);
+
+      const stats = await runner.run(makeResolvedQuery());
+
+      expect(stats.resultsSaved).toBe(1);
+      expect(stats.jobsEnqueued).toBe(1);
+
+      const depth = await normalizationQueue.depth();
+      expect(depth.ok ? depth.value : -1).toBe(1);
+    });
+
+    it("incoming result with no website uses saveAndGetId() even when the store supports website filling", async () => {
+      const store = makeCapableStore();
+
+      let fillCalled = false;
+      const originalFill = store.saveAndGetIdWithWebsiteFill.bind(store);
+
+      store.saveAndGetIdWithWebsiteFill = async (result, website) => {
+        fillCalled = true;
+        return originalFill(result, website);
+      };
+
+      const provider = makeMockProvider([
+        makeProviderResult(1, TEST_RUN_ID, {}),
+      ]);
+
+      const runner = new DiscoveryRunner(provider, store, normalizationQueue);
+
+      await runner.run(makeResolvedQuery());
+
+      expect(fillCalled).toBe(false);
+    });
+
+    it("store without the optional capability falls back to saveAndGetId()", async () => {
+      const nonCapableStore: import("../../../src/storage/IRawResultStore.js").IRawResultStore = {
+        async save() {
+          return true;
+        },
+        async fetch() {
+          return null;
+        },
+        async fetchById() {
+          return null;
+        },
+        async saveAndGetId(result) {
+          return {
+            id: `id-${result.providerResultId}` as never,
+            isNew: true,
+          };
+        },
+      };
+
+      const provider = makeMockProvider([
+        makeProviderResult(1, TEST_RUN_ID, {
+          website: "https://example.com",
+        }),
+      ]);
+
+      const runner = new DiscoveryRunner(
+        provider,
+        nonCapableStore,
+        normalizationQueue,
+      );
+
+      const stats = await runner.run(makeResolvedQuery());
+
+      expect(stats.resultsSaved).toBe(1);
+      expect(stats.jobsEnqueued).toBe(1);
+    });
+
+    it("existing failingStore save-error behavior remains intact and untouched", async () => {
+      const failingStore: import("../../../src/storage/IRawResultStore.js").IRawResultStore = {
+        async save(): Promise<boolean> {
+          throw new Error("simulated save failure");
+        },
+        async fetch() {
+          return null;
+        },
+        async fetchById() {
+          return null;
+        },
+        async saveAndGetId() {
+          throw new Error("simulated save failure");
+        },
+      };
+
+      const provider = makeMockProvider([
+        makeProviderResult(1, TEST_RUN_ID, {
+          website: "https://example.com",
+        }),
+      ]);
+
+      const runner = new DiscoveryRunner(
+        provider,
+        failingStore,
+        normalizationQueue,
+      );
+
+      const stats = await runner.run(makeResolvedQuery());
+
+      expect(stats.resultsSaved).toBe(0);
+      expect(stats.errors).toBe(1);
+    });
   });
 });

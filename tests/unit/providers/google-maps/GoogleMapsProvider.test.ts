@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file tests/unit/providers/google-maps/GoogleMapsProvider.test.ts
  *
  * Unit tests for GoogleMapsProvider.discover() -- two-phase architecture.
@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { GoogleMapsProvider } from "../../../../src/providers/google-maps/GoogleMapsProvider.js";
+import { PlaceIdWebsiteCache } from "../../../../src/cache/PlaceIdWebsiteCache.js";
 
 function makeMockPage(searchUrl = "https://www.google.com/maps/search/plumber") {
   return {
@@ -25,12 +26,13 @@ function makeMockCard(id = "card-0") {
   return { __mockCardId: id, evaluate: vi.fn().mockResolvedValue(null) };
 }
 
-function makePayload(placeId: string) {
+function makePayload(placeId: string, website?: string) {
   return {
     placeId,
     name: `Business ${placeId}`,
     listingUrl: `https://www.google.com/maps/place/${placeId}/@1.0,2.0,17z/data=!1s${placeId}`,
     detailPanelScraped: true,
+    ...(website !== undefined ? { website } : {}),
   };
 }
 
@@ -510,6 +512,128 @@ describe("GoogleMapsProvider.discover() -- two-phase architecture", () => {
       });
       const results = await collectResults(provider.discover(makeQuery() as never));
       expect((results[0] as { resumeToken: unknown }).resumeToken).toBeDefined();
+    });
+  });
+
+  describe("Phase 2 -- website-driven cache gate", () => {
+    it("skips page.goto() for an entry the cache reports as seen-with-website", async () => {
+      const cache = new PlaceIdWebsiteCache();
+      cache.record("ChIJ_A", true);
+
+      const { provider, page, mockAdapter } = buildProvider({
+        cards: [[makeMockCard("c0"), makeMockCard("c1")], []],
+        cardHrefs: [makeCardHref("ChIJ_A"), makeCardHref("ChIJ_B")],
+        detailPayloads: [makePayload("ChIJ_B")],
+      });
+
+      const results = await collectResults(
+        provider.discover(makeQuery() as never, { placeIdWebsiteCache: cache } as never),
+      );
+
+      expect(page.goto).toHaveBeenCalledTimes(1);
+      expect(page.goto).toHaveBeenCalledWith(
+        expect.stringContaining("ChIJ_B"),
+        expect.anything(),
+      );
+      expect(mockAdapter.extractFromDetailUrl).toHaveBeenCalledTimes(1);
+      expect(results).toHaveLength(1);
+      expect((results[0] as { providerResultId: string }).providerResultId).toBe("ChIJ_B");
+    });
+
+    it("does NOT skip an entry the cache reports as seen-no-website", async () => {
+      const cache = new PlaceIdWebsiteCache();
+      cache.record("ChIJ_A", false);
+
+      const { provider, page } = buildProvider({
+        cards: [[makeMockCard("c0")], []],
+        cardHrefs: [makeCardHref("ChIJ_A")],
+        detailPayloads: [makePayload("ChIJ_A")],
+      });
+
+      await collectResults(
+        provider.discover(makeQuery() as never, { placeIdWebsiteCache: cache } as never),
+      );
+
+      expect(page.goto).toHaveBeenCalledTimes(1);
+    });
+
+    it("does NOT skip an unseen identity", async () => {
+      const cache = new PlaceIdWebsiteCache();
+
+      const { provider, page } = buildProvider({
+        cards: [[makeMockCard("c0")], []],
+        cardHrefs: [makeCardHref("ChIJ_A")],
+        detailPayloads: [makePayload("ChIJ_A")],
+      });
+
+      await collectResults(
+        provider.discover(makeQuery() as never, { placeIdWebsiteCache: cache } as never),
+      );
+
+      expect(page.goto).toHaveBeenCalledTimes(1);
+    });
+
+    it("records seen-with-website in the cache after a successful extraction whose payload has a website", async () => {
+      const cache = new PlaceIdWebsiteCache();
+
+      const { provider } = buildProvider({
+        cards: [[makeMockCard("c0")], []],
+        cardHrefs: [makeCardHref("ChIJ_A")],
+        detailPayloads: [makePayload("ChIJ_A", "https://example.com")],
+      });
+
+      await collectResults(
+        provider.discover(makeQuery() as never, { placeIdWebsiteCache: cache } as never),
+      );
+
+      expect(cache.status("ChIJ_A")).toBe("seen-with-website");
+    });
+
+    it("records seen-no-website in the cache after a successful extraction whose payload has no website", async () => {
+      const cache = new PlaceIdWebsiteCache();
+
+      const { provider } = buildProvider({
+        cards: [[makeMockCard("c0")], []],
+        cardHrefs: [makeCardHref("ChIJ_A")],
+        detailPayloads: [makePayload("ChIJ_A")],
+      });
+
+      await collectResults(
+        provider.discover(makeQuery() as never, { placeIdWebsiteCache: cache } as never),
+      );
+
+      expect(cache.status("ChIJ_A")).toBe("seen-no-website");
+    });
+
+    it("does not skip anything when no cache is supplied (backward compatible)", async () => {
+      const { provider, page } = buildProvider({
+        cards: [[makeMockCard("c0"), makeMockCard("c1")], []],
+        cardHrefs: [makeCardHref("ChIJ_A"), makeCardHref("ChIJ_B")],
+        detailPayloads: [makePayload("ChIJ_A"), makePayload("ChIJ_B")],
+      });
+
+      await collectResults(provider.discover(makeQuery() as never));
+
+      expect(page.goto).toHaveBeenCalledTimes(2);
+    });
+
+    it("Phase 1 card collection is unaffected by the cache -- both cards are still collected even though one will be skipped in Phase 2", async () => {
+      const cache = new PlaceIdWebsiteCache();
+      cache.record("ChIJ_A", true);
+
+      const { provider, mockAdapter } = buildProvider({
+        cards: [[makeMockCard("c0"), makeMockCard("c1")], []],
+        cardHrefs: [makeCardHref("ChIJ_A"), makeCardHref("ChIJ_B")],
+        detailPayloads: [makePayload("ChIJ_B")],
+      });
+
+      await collectResults(
+        provider.discover(makeQuery() as never, { placeIdWebsiteCache: cache } as never),
+      );
+
+      // Phase 1's getCardListingUrl() is called once per card regardless of
+      // the cache -- the skip decision only affects Phase 2's page.goto().
+      expect(mockAdapter.getCardListingUrl).toHaveBeenCalledTimes(2);
     });
   });
 

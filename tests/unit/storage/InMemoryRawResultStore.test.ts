@@ -25,11 +25,12 @@ function makeResult(
   providerResultId: string,
   runId = "run-1" as RunID,
   providerId = "google-maps",
+  rawPayload: Record<string, unknown> = { name: "Test Business" },
 ): ProviderResult {
   return {
     providerId,
     providerResultId,
-    rawPayload: { name: "Test Business" },
+    rawPayload,
     resumeToken: RESUME_TOKEN,
     sourceUrl: null,
     collectedAt: new Date("2025-01-01T00:00:00Z"),
@@ -184,6 +185,120 @@ describe("InMemoryRawResultStore", () => {
       const second = await store.saveAndGetId(result);
 
       expect(second.id).toBe(first.id);
+    });
+  });
+
+  describe("saveAndGetIdWithWebsiteFill()", () => {
+    it("inserts normally for a new identity, returning isNew: true, updated: false", async () => {
+      const store = new InMemoryRawResultStore();
+      const result = makeResult("place-1", "run-1" as RunID, "google-maps", {
+        name: "Ace Plumbers",
+        website: "https://ace.example.com",
+      });
+
+      const outcome = await store.saveAndGetIdWithWebsiteFill(result, "https://ace.example.com");
+
+      expect(outcome.isNew).toBe(true);
+      expect(outcome.updated).toBe(false);
+      expect(typeof outcome.id).toBe("string");
+    });
+
+    it("fills the website on a duplicate whose existing row has no website, returning updated: true", async () => {
+      const store = new InMemoryRawResultStore();
+      const original = makeResult("place-1", "run-1" as RunID, "google-maps", {
+        name: "Ace Plumbers",
+        phone: "+234 801 234 5678",
+      });
+      await store.saveAndGetId(original);
+
+      const retry = makeResult("place-1", "run-1" as RunID, "google-maps", {
+        name: "Ace Plumbers",
+        website: "https://ace.example.com",
+      });
+      const outcome = await store.saveAndGetIdWithWebsiteFill(retry, "https://ace.example.com");
+
+      expect(outcome.isNew).toBe(false);
+      expect(outcome.updated).toBe(true);
+    });
+
+    it("preserves all pre-existing fields when filling the website", async () => {
+      const store = new InMemoryRawResultStore();
+      const original = makeResult("place-1", "run-1" as RunID, "google-maps", {
+        name: "Ace Plumbers",
+        phone: "+234 801 234 5678",
+        rating: 4.5,
+        hoursRaw: ["Mon-Fri: 09:00-17:00"],
+      });
+      await store.saveAndGetId(original);
+
+      const retry = makeResult("place-1", "run-1" as RunID, "google-maps", {
+        name: "Ace Plumbers",
+        website: "https://ace.example.com",
+      });
+      const outcome = await store.saveAndGetIdWithWebsiteFill(retry, "https://ace.example.com");
+
+      const stored = await store.fetchById(outcome.id);
+      const payload = stored?.rawPayload as Record<string, unknown>;
+
+      expect(payload.name).toBe("Ace Plumbers");
+      expect(payload.phone).toBe("+234 801 234 5678");
+      expect(payload.rating).toBe(4.5);
+      expect(payload.hoursRaw).toEqual(["Mon-Fri: 09:00-17:00"]);
+      expect(payload.website).toBe("https://ace.example.com");
+    });
+
+    it("does not overwrite an existing non-empty website, returning updated: false", async () => {
+      const store = new InMemoryRawResultStore();
+      const original = makeResult("place-1", "run-1" as RunID, "google-maps", {
+        name: "Ace Plumbers",
+        website: "https://original.example.com",
+      });
+      await store.saveAndGetId(original);
+
+      const retry = makeResult("place-1", "run-1" as RunID, "google-maps", {
+        name: "Ace Plumbers",
+        website: "https://different.example.com",
+      });
+      const outcome = await store.saveAndGetIdWithWebsiteFill(retry, "https://different.example.com");
+
+      expect(outcome.isNew).toBe(false);
+      expect(outcome.updated).toBe(false);
+
+      const stored = await store.fetchById(outcome.id);
+      const payload = stored?.rawPayload as Record<string, unknown>;
+      expect(payload.website).toBe("https://original.example.com");
+    });
+
+    it("repeating the same fill is idempotent -- second call returns updated: false", async () => {
+      const store = new InMemoryRawResultStore();
+      const original = makeResult("place-1", "run-1" as RunID, "google-maps", {
+        name: "Ace Plumbers",
+      });
+      await store.saveAndGetId(original);
+
+      const retry = makeResult("place-1", "run-1" as RunID, "google-maps", {
+        website: "https://ace.example.com",
+      });
+      const first = await store.saveAndGetIdWithWebsiteFill(retry, "https://ace.example.com");
+      expect(first.updated).toBe(true);
+
+      const second = await store.saveAndGetIdWithWebsiteFill(retry, "https://ace.example.com");
+      expect(second.updated).toBe(false);
+    });
+
+    it("returns the same id as the original identity across the fill", async () => {
+      const store = new InMemoryRawResultStore();
+      const original = makeResult("place-1", "run-1" as RunID, "google-maps", {
+        name: "Ace Plumbers",
+      });
+      const originalOutcome = await store.saveAndGetId(original);
+
+      const retry = makeResult("place-1", "run-1" as RunID, "google-maps", {
+        website: "https://ace.example.com",
+      });
+      const fillOutcome = await store.saveAndGetIdWithWebsiteFill(retry, "https://ace.example.com");
+
+      expect(fillOutcome.id).toBe(originalOutcome.id);
     });
   });
 });

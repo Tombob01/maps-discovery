@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @module providers/google-maps/GoogleMapsProvider
  *
  * Google Maps business discovery provider.
@@ -232,6 +232,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
     }
 
     const maxResults = options?.maxResults ?? GOOGLE_MAPS_MAX_RESULTS;
+    const placeIdCache = options?.placeIdWebsiteCache;
 
     const resumedIds = new Set<string>();
     if (options?.resumeToken !== undefined) {
@@ -344,9 +345,26 @@ export class GoogleMapsProvider implements IBrowserProvider {
       let successfulExtractions = 0;
       let failedNavigations = 0;
       let failedExtractions = 0;
+      let skippedViaWebsiteCache = 0;
 
       for (const entry of collectedUrls) {
         if (totalYielded >= maxResults) break;
+
+        // Website-driven Phase 2 skip (per-run, optional): if this Place
+        // ID was already observed earlier in this run WITH a website,
+        // the expensive detail-page navigation is redundant -- skip it.
+        // A Place ID observed without a website remains eligible for a
+        // retry, since a later occurrence may successfully surface one.
+        // Phase 1 collection above is entirely unaffected by this check.
+        const identityKey = entry.placeId ?? this._syntheticId(entry.url);
+        if (
+          placeIdCache !== undefined &&
+          placeIdCache.status(identityKey) === "seen-with-website"
+        ) {
+          skippedViaWebsiteCache++;
+          log.debug(`phase2: skipping ${entry.url} -- known with website in this run (id=${identityKey})`);
+          continue;
+        }
 
         urlsVisited++;
         try {
@@ -373,6 +391,12 @@ export class GoogleMapsProvider implements IBrowserProvider {
         }
 
         successfulExtractions++;
+
+        if (placeIdCache !== undefined) {
+          const hasWebsite =
+            typeof payload.website === "string" && payload.website.trim().length > 0;
+          placeIdCache.record(identityKey, hasWebsite);
+        }
 
         const resultId =
           payload.placeId ??
@@ -404,7 +428,7 @@ export class GoogleMapsProvider implements IBrowserProvider {
       }
 
       const successRate = urlsVisited > 0 ? Math.round((successfulExtractions / urlsVisited) * 100) : 0;
-      log.debug(`[phase2-stats] visited=${urlsVisited} extracted=${successfulExtractions} failed_navigation=${failedNavigations} failed_extraction=${failedExtractions} success_rate=${successRate}%`);
+      log.debug(`[phase2-stats] visited=${urlsVisited} extracted=${successfulExtractions} failed_navigation=${failedNavigations} failed_extraction=${failedExtractions} skipped_via_website_cache=${skippedViaWebsiteCache} success_rate=${successRate}%`);
       log.debug(`phase2 complete: yielded ${totalYielded} results`);
 
     } finally {
